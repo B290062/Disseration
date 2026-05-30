@@ -1,0 +1,868 @@
+---
+title: "Analysis"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-07-24"
+---
+
+## BEGINING 
+The featureCounts counts were done on the the provided samples and customized GTF file
+The data can be now be analyzed in R.
+Here downloading libararies needed for analysis: 
+
+```{r setup, include=FALSE}
+
+
+
+
+library(biomaRt)
+library(dplyr)
+library(data.table)
+library(dplyr)
+library(tidyverse)
+library(DESeq2)
+library(pheatmap)
+library(viridis)
+library(GO.db)
+library(VennDiagram)
+library(grid)
+library(EnhancedVolcano)
+library(ggrepel)
+
+```
+
+## DATA PREPARATION 
+The code below downloads the count.txt data into R for the analysis 
+
+```{r, download1}
+#Download counts.txt
+gene_data <- read.table("counts.txt", header=TRUE, sep="\t", comment.char="#")
+```
+
+
+Now getting table ready for analysis, please note to make changes for your data if necessary:
+
+```{r, download2}
+# Set the Geneid column as row names
+rownames(gene_data) <- gene_data$Geneid
+
+# Sort data - create separate for counts and metadata: 
+metdata <- gene_data[c(1:5)]
+counts <- gene_data[-c(1:6)]
+```
+
+Now have data frame that contains only quatification data without metadata: 
+
+```{r}
+
+head(counts)
+
+```
+## NORMALIZATION 
+Now performing normalization - for this analysis RPM is used as normalization method: 
+
+```{r, normalization}
+
+#Now normalizing using RPM 
+scale_factor <- colSums(counts)
+RPM <- sweep(counts, 2, scale_factor, FUN='/')*1e6
+
+```
+
+To investigate divergent transcription, the gene variants that will be process further must be _2 and _3 as those are going opposite directions from each other: 
+
+```{r, processing _2 and _3}
+
+#Now extracting only _2 and _3 as opposite to each other so divergent trans 
+pattern <- '.*_[1-9]+_[23]$'
+counts_filtered <- subset(RPM, grepl(pattern, rownames(RPM)))
+#This table is prepared for DESeq2 analysis that does not require normalization: 
+counts_new <- subset(counts, grepl(pattern, rownames(counts)))
+
+```
+
+## BEGINING THE ANALYSIS 
+# Making ranking for bidirectional promoters 
+
+Samples must be divide by groups manually depending how many groups there are. Please change if necessary. 
+
+```{r, rankings1}
+
+#Please here divide the groups according to your study 
+#Here 1:15 - samples columns with counts 
+
+groups <- list('OCT4_untreated' = 1:15,
+               'OCT4_treated ' = 16:30,
+               'BRG1_untreated' = 31:45,
+               'BRG1_treated' = 46:60
+               )
+#After groups are difined manually now will go into function that will produce rankings automatically 
+  
+  #Extracting indices - columns for each group 
+  groups <- lapply(groups, function(indices) counts_filtered[, indices])
+  
+  #Calculating row sums for each group
+  row_sums <- lapply(groups, function(group) rowSums(group, na.rm = FALSE))
+  
+  #Getting everything into a data frame
+  RPM_normal <- data.frame(Geneid_RPM = rownames(counts_filtered))
+  for (i in 1:length(row_sums)) {
+    RPM_normal <- cbind(RPM_normal, row_sums[[i]])
+  
+  }
+  
+  #Reanmimg the column names according to groups 
+  colnames(RPM_normal)[-1] <- names(groups)
+  
+  #Checking the data 
+  head(RPM_normal)
+  
+  #Now need to get Geneid_base
+  RPM_normal <- RPM_normal %>% 
+    mutate(Geneid_base = gsub('_2$|_3$','', Geneid_RPM)) 
+
+ # Craeting kist for rankings of each group 
+ranking_tables <- list()
+
+#Counts will be set to not be less then 10, change manually if need more/less
+number <- 20 
+
+for (group_name in names(groups)) {
+  ratio_group <- RPM_normal %>%
+    group_by(Geneid_base) %>%
+    summarize(
+      smallest_value = min(.data[[group_name]], na.rm = TRUE),
+      largest_value = max(.data[[group_name]], na.rm = TRUE),
+      largest_ratio = ifelse(smallest_value > 0, largest_value / smallest_value, NA),
+      rank = ifelse(smallest_value >= number, smallest_value * (1 / largest_ratio), NA)
+    ) %>% 
+     filter(smallest_value >= number)
+   
+
+  #Order by rank in descending order
+  newdata_group <- ratio_group[order(ratio_group$rank, decreasing = TRUE), ]
+
+  #Create ranking table
+  ranking_table <- data.frame(
+    Geneid = newdata_group$Geneid_base,
+    rank = newdata_group$rank
+  )
+
+  ranking_tables[[group_name]] <- ranking_table
+}
+
+
+```
+```{r, getting ranking }
+#Here are the ranking 
+
+ranking_OCT4_untreated <- ranking_tables$OCT4_untreated %>% 
+   mutate(across(where(is.numeric), ~ round(., 2)))
+
+
+ranking_OCT4_treated <- ranking_tables$OCT4_treated %>% 
+    mutate(across(where(is.numeric), ~ round(., 2)))
+
+ranking_BRG1_untreated <- ranking_tables$BRG1_untreated %>% 
+   mutate(across(where(is.numeric), ~ round(., 2)))
+
+
+
+ranking_BRG1_treated <- ranking_tables$BRG1_treated %>%
+   mutate(across(where(is.numeric), ~ round(., 2)))
+
+
+
+#If want to save to directory 
+
+write.csv(ranking_OCT4_untreated, "1000ranking_OCT4_untreated.csv", row.names = FALSE)
+write.csv(ranking_OCT4_treated, "1000ranking_OCT4_treated.csv", row.names = FALSE)
+write.csv(ranking_BRG1_untreated, "1000ranking_BRG1_untreated.csv", row.names = FALSE)
+write.csv(ranking_BRG1_treated, "1000ranking_BRG1_treated.csv", row.names = FALSE)
+
+```
+
+
+## STRARTING DESeq2 ANALYSIS FOR OCT4:
+
+The deferentially expressed analysis was done to look at the divergent pairs and see which genes have a significant change and whether both _2 and _3 are regulated the same or differently. 
+
+```{r, OCT4 DESeq2}
+#Making an annotation for OCT4, this must be done manually looking at how many samples are assigned to condition
+#prepare condition data frame for the analysis 
+
+condition_1 <- c(rep('OCT4_untreated', 15), rep('OCT4_treated', 15))
+data_samples_1 <- data.frame(
+  row.names = colnames(counts_new)[1:30],  
+  condition = condition_1
+)
+
+SRA_table <- read.table("SraRunTable.txt", header=TRUE, sep= ',', comment.char="#")
+SRA_table <- SRA_table[1:30,]
+
+#checking the data 
+all(colnames(counts_new)[1:30] %in% rownames(data_samples_1))
+all(colnames(counts_new)[1:30] == rownames(data_samples_1))
+
+#getting only OCT4_untreated and OCT4_treated from counts_new data 
+counts_subset <- counts_new[, 1:30]
+
+# do dds1 
+dds_1 <- DESeqDataSetFromMatrix(countData = counts_subset,
+                                colData = data_samples_1,
+                                design = ~ condition)
+
+dds_1 <- collapseReplicates(dds_1, groupby = SRA_table$Run, run = SRA_table$BioSample)
+
+
+
+#get the factor scale 
+dds_1$condition <- relevel(dds_1$condition, ref = 'OCT4_untreated')
+
+#do deseq2 
+dds_1 <- DESeq(dds_1)
+res_1 <- results(dds_1, contrast=c("condition","OCT4_treated","OCT4_untreated"))
+res1_new <- results(dds_1, contrast=c("condition","OCT4_treated","OCT4_untreated"))
+
+
+
+#p-values 
+resOrdered <- res_1[order(res_1$pvalue),]
+
+normalized_counts <- counts(dds_1, normalized=TRUE)
+
+# Filter genes with at least 10 counts in total across all samples
+filter <- rowSums(normalized_counts) > 10
+
+# Apply the filter to the results
+res_filtered <- res_1[filter, ]
+```
+
+Now can use the result of analysis to get the top25 genes, to investigate whether both _2 and _3 up-regulated or down-regulated or whether both variants are regulated differently. Here the data is sorted: by getting the genes adter DESeq2 analysis, the expression is shown by looking at log2FoldChange parameter. Log2FoldChange is transferred into log and if log is >1 that would mean the gene is up-regulated and if it is 1>, that would mean gene is down-regulated. If log is 1 the gene is marked as unchanged. This way can tell that expression of those genes increased/decreased in OCT4_untreated. The next parameter taht is considered is p adjacent value. If p_adj < 0.05, that suggests that the change in expression is statistically significant. The genes that were choosen: would have statistically significant change, so both pairs must be increase/decrease (if unchanged taht would mean there is no divergent transcription) and their p_adj<0.05.  
+
+```{r, getting genes OCT4}
+#getting the the data frame of deseq2 results for OCT4 
+expressed_genes_OCT4 <- as.data.frame(res_filtered)
+
+#getting filtered from lowest to highest p_adjacent value 
+expressed_genes_OCT4 <- expressed_genes_OCT4[order(expressed_genes_OCT4$padj),]
+
+#getting geneid from row.nmaes into column so can see both variants _2 and _3 
+expressed_genes_OCT4 <- rownames_to_column(expressed_genes_OCT4, var = "gene_id")
+#sort in increasing order
+expressed_genes_OCT4 <- expressed_genes_OCT4[order(expressed_genes_OCT4$padj), ]
+#making row names numbers 
+row.names(expressed_genes_OCT4) <- expressed_genes_OCT4$row_number
+
+#getting Gneid_base
+expressed_genes_OCT4 <- expressed_genes_OCT4 %>%
+  mutate(Geneid_base = gsub('_2$|_3$','', gene_id))
+
+expressed_genes_OCT4 <- relocate(expressed_genes_OCT4, Geneid_base, .after=gene_id)
+
+#getting log value and looking whether gene pairs change: increase or decrease in expression. 
+expressed_genes_OCT4 <- expressed_genes_OCT4 %>%
+  mutate(
+    Log = 2^log2FoldChange,
+    expression = case_when(
+      Log > 1 ~ 'upregulated',
+      Log < 1 ~ 'downregulated',
+      TRUE ~ 'unchanged'
+    )
+  ) 
+
+#by sorting with p adjacent < 0.05 can see whether genes actually statistically significantly change or not, if p_adj>0.05 would suggest that change is not significant 
+expressed_genes_OCT4 <- expressed_genes_OCT4 %>%
+  mutate(
+    expression_2 = case_when(
+      is.na(padj) ~ 'not significantly changed',
+      padj > 0.05 ~ 'not significantly changed',
+      TRUE ~ 'significantly changed'
+    )
+  )
+
+
+
+
+
+#Now need to get rid of genes that are nit significantly cahnged as would mean that not divergently transcribed (counts too low if NA)
+changed_genes_OCT4 <- expressed_genes_OCT4 %>%
+  filter(expression_2 == 'significantly changed')
+
+#get both gene_ids based on Geneid_base 
+both_geneid <- changed_genes_OCT4 %>%
+  group_by(Geneid_base) %>%
+  filter(all(c(paste0(Geneid_base, "_2"), paste0(Geneid_base, "_3")) %in% gene_id)) %>%
+  pull(Geneid_base) %>%
+  unique()
+
+#Getting all pairs that are padj < 0.05 and are either upregulated or downregulated 
+OCT4_genes <- expressed_genes_OCT4 %>%
+    filter(
+      Geneid_base %in% both_geneid,
+    expression_2 == 'significantly changed'
+    )
+
+OCT4_genes_2 <- expressed_genes_OCT4 %>%
+    filter(Geneid_base %in% both_geneid, 
+           expression_2 == 'significantly changed',
+           baseMean > 10) %>%
+    group_by(Geneid_base) %>%
+    filter(n() == 2) 
+ 
+OCT4_genes_2 <- OCT4_genes_2[order(OCT4_genes_2$gene_id),]
+  
+#sorting by alphabetical order 
+OCT4_genes <- OCT4_genes[order(OCT4_genes$gene_id),]
+
+#saving results 
+write.csv(OCT4_genes_2, '/home/s2614505/Diss/OCTbasemean.csv')
+
+OCT4_genes_up_down_2 <- OCT4_genes_2 %>%
+  group_by(Geneid_base) %>%
+  filter(any(expression == 'upregulated') & any(expression == 'downregulated')) %>%
+  filter(baseMean > 10) %>%
+  filter(n() == 2)
+
+#write.csv(OCT4_genes_up_down, '/home/s2614505/Diss/OCT4_genes_diff_reg.csv')
+
+OCT4_one_sig_one_not_sig <- expressed_genes_OCT4 %>%
+  group_by(Geneid_base) %>%
+  filter(any(expression_2 == 'not significantly changed') & any(expression_2 == 'significantly changed')) %>%
+  filter(!is.na(padj)) %>%
+  filter(baseMean > 10) %>%
+   filter(n() == 2)
+
+OCT4_one_sig_one_not_sig <- OCT4_one_sig_one_not_sig[order(OCT4_one_sig_one_not_sig$gene_id), ]
+write_csv(OCT4_one_sig_one_not_sig, '/home/s2614505/Diss/OCT$_one_sig_one_not_sig.csv')
+
+
+
+
+```
+
+
+## Graphs can be plot to vizualize the data quality
+
+## MA plot
+```{r, MA for OCT4}
+
+plotMA(res_1, ylim=c(-2,2))
+
+```
+
+## PCA plot:
+```{r, PCA for OCT}
+vsdata <- vst(dds_1, blind = FALSE)
+plotPCA(vsdata, intgroup = 'condition')
+```
+
+
+The below analysis was done for BRG1 same as for OCT4:
+```{r, DESeq2 on BRG1}
+condition_2 <- c(rep('BRG1_untreated', 15), rep('BRG1_treated', 15))
+data_samples_2 <- data.frame(
+  row.names = colnames(counts_new)[31:60],  
+  condition = condition_2
+)
+
+#checking the data 
+all(colnames(counts_new)[31:60] %in% rownames(data_samples_2))
+all(colnames(counts_new)[31:60] == rownames(data_samples_2))
+#getting only BRG1_untretaed and BRG1_treated from counts_new data 
+counts_subset <- counts_new[, 31:60]
+
+# do dds1 
+dds_2 <- DESeqDataSetFromMatrix(countData = counts_subset,
+                                colData = data_samples_2,
+                                design = ~ condition)
+SRA_table <- read.table("SraRunTable.txt", header=TRUE, sep= ',', comment.char="#")
+SRA_table <- SRA_table[31:60,]
+
+dds_2 <- collapseReplicates(dds_2, groupby = SRA_table$Run, run = SRA_table$BioSample)
+
+#get the factor scale 
+dds_2$condition <- relevel(dds_2$condition, ref = 'BRG1_untreated')
+
+#do deseq2 
+dds_2 <- DESeq(dds_2)
+res_2 <- results(dds_2, contrast=c("condition","BRG1_treated","BRG1_untreated"))
+
+#p-values 
+resOrdered <- res_2[order(res_2$pvalue),]
+```
+
+Now getting the data frame: 
+```{r, getting genes BRG1}
+#gettingthe the data frame of deseq2 results for OCT4 
+expressed_genes_BRG1 <- as.data.frame(res_2)
+#getting filtered frm lowest tp highest p_adjacent value 
+
+expressed_genes_BRG1 <- expressed_genes_BRG1[order(expressed_genes_BRG1$padj),]
+
+expressed_genes_BRG1 <- rownames_to_column(expressed_genes_BRG1, var = "gene_id")
+expressed_genes_BRG1 <- expressed_genes_BRG1[order(expressed_genes_BRG1$padj), ]
+row.names(expressed_genes_BRG1) <- expressed_genes_BRG1$row_number
+        
+
+#getting Gene_base from expressed genes to find pairs 
+expressed_genes_BRG1 <- expressed_genes_BRG1 %>%
+  mutate(Geneid_base = gsub('_2$|_3$','', gene_id))
+
+expressed_genes_BRG1 <- relocate(expressed_genes_BRG1, Geneid_base, .after=gene_id)
+
+
+#getting log value and looking whether gene pairs change: incarese or decraese in expression 
+ expressed_genes_BRG1 <- expressed_genes_BRG1 %>%
+  mutate(
+    Log = 2^log2FoldChange,
+  expression = case_when(
+      Log > 1 ~ 'upregulated',
+      Log < 1 ~ 'downregulated',
+      TRUE ~ 'unchanged'
+    )
+  ) 
+
+#by sorting with adkustong p value < 0.05 can see whether genes actually change or not, if p_adj>0.05 tehy would suggest that change is nit significant 
+expressed_genes_BRG1 <- expressed_genes_BRG1 %>%
+  mutate(
+    expression_2 = case_when(
+      is.na(padj) ~ 'not significantly changed',
+      padj > 0.05 ~ 'not significantly changed',
+      TRUE ~ 'significantly changed'
+    )
+  )
+
+
+         
+
+
+#write.csv(expressed_genes_BRG1, '/home/s2614505/Diss/all_DESeq2_BRG1.csv')
+
+
+#Now need to get rid of genes that are nit significantly cahnged as would mean that not divergently transcribed (counts too low if NA)
+
+changed_genes_BRG1 <- expressed_genes_BRG1 %>%
+  filter(expression_2 == 'significantly changed')
+
+# Identify Geneid_base that have both _2 and _3 variants significantly expressed
+both_ids <- changed_genes_BRG1 %>%
+  group_by(Geneid_base) %>%
+  filter(all(c(paste0(Geneid_base, "_2"), paste0(Geneid_base, "_3")) %in% gene_id)) %>%
+  pull(Geneid_base) %>%
+  unique()
+
+# Filter the original dataframe to include only genes with valid Geneid_base
+BRG1_genes <- expressed_genes_BRG1 %>%
+  filter(
+    Geneid_base %in% both_ids,
+    expression_2 == 'significantly changed',
+  )
+
+BRG1_genes <- BRG1_genes[order(BRG1_genes$gene_id),]
+
+#write.csv(BRG1_genes, '/home/s2614505/Diss/BRG1_genes_padj<0.05.csv')
+
+BRG1_genes_up_down <- BRG1_genes %>%
+  group_by(Geneid_base) %>%
+  filter(any(expression == 'upregulated') & any(expression == 'downregulated'))
+
+#write.csv(BRG1_genes_up_down, '/home/s2614505/Diss/BRG1_genes_diff_reg.csv')
+
+BRG1_one_sig_one_not_sig <- expressed_genes_BRG1 %>%
+  group_by(Geneid_base) %>%
+  filter(any(expression_2 == 'not significantly changed') & any(expression_2 == 'significantly changed')) %>%
+  filter(!is.na(padj)) %>%
+  filter(baseMean > 10) %>%
+   filter(n() == 2) 
+  
+
+BRG1_one_sig_one_not_sig <- BRG1_one_sig_one_not_sig[order(BRG1_one_sig_one_not_sig$gene_id), ]
+
+write.csv(BRG1_one_sig_one_not_sig, '/home/s2614505/Diss/BRG1_ONE_NOT.csv')
+
+
+
+BRG1_genes_2 <- expressed_genes_BRG1%>%
+    filter(Geneid_base %in% both_geneid, 
+           expression_2 == 'significantly changed',
+           baseMean > 2) %>%
+    group_by(Geneid_base) %>%
+    filter(n() == 2) 
+
+BRG1_3 <- BRG1_genes %>%
+  group_by(Geneid_base) %>%
+    filter(baseMean > 10) %>%
+    filter(n() == 2) 
+
+BRG1_genes_2 <- BRG1_genes_2[order(BRG1_genes_2$gene_id),]
+BRG1_3 <- BRG1_3[order(BRG1_3$gene_id),]
+  
+#sorting by alphabetical order
+#saving results 
+#write.csv(OCT4_genes_2, '/home/s2614505/Diss/BRG1_basemeansort.csv')
+write.csv(BRG1_3, '/home/s2614505/Diss/BRG1_basemeansort3.csv')
+
+BRG1_genes_up_down_2 <- BRG1_3 %>%
+  group_by(Geneid_base) %>%
+  filter(any(expression == 'upregulated') & any(expression == 'downregulated')) %>%
+  filter(n() == 2)
+
+#write.csv(OCT4_genes_up_down_2, '/home/s2614505/Diss/OCT4_basemeansortregdif.csv')
+write.csv(BRG1_genes_up_down_2, '/home/s2614505/Diss/BRG1_basemeansortregdif.csv')
+
+```
+## Plots for BRG1 data: 
+
+# MA plot: 
+
+```{r}
+plotMA(res_2, ylim=c(-2,2))
+```
+# PCA plot for: 
+```{r}
+vsdata_2 <- vst(dds_2, blind = FALSE)
+plotPCA(vsdata_2, intgroup = 'condition')
+```
+
+
+
+
+## Venn Diagramm of gene pairs that differentially expressed 
+```{r, venn diagram}
+
+#doing venn diagram for overlaping genes 
+
+
+genes_venn_OCT4 <- OCT4_genes_2 %>% filter(padj < 0.05) %>% pull(gene_id)
+genes_venn_BRG1 <- BRG1_3 %>% filter(padj < 0.05) %>% pull(gene_id)
+
+genes_one_venn_OCT4 <- OCT4_one_sig_one_not_sig %>% pull(gene_id)
+genes_one_venn_BRG1 <- BRG1_one_sig_one_not_sig %>%  pull(gene_id)
+
+overlapping_genes <- intersect(genes_venn_OCT4, genes_venn_BRG1)
+
+overlapping_one_genes <- intersect(genes_one_venn_BRG1, genes_one_venn_OCT4)
+
+# Generate Venn Diagram with improved styling
+venn.plot <- venn.diagram(
+  x = list(OCT4 = genes_venn_OCT4, BRG1 = genes_venn_BRG1),
+  category.names = c("OCT4 genes", "BRG1 genes"),
+  filename = NULL,
+  output = TRUE,
+  fill = c("#66C2A5", "#FC8D62"),  # Distinct colors
+  alpha = 0.6,  # Adjust transparency
+  cex = 1.5,
+  fontface = "bold",
+  fontfamily = "sans",
+  cat.cex = 1.5,
+  cat.fontface = "bold",
+  cat.default.pos = "text",
+  cat.pos = c(-30, 30),  # Adjust position of category labels
+  cat.dist = c(0.05, 0.05),
+  cat.fontfamily = "sans",
+  lwd = 2,  # Line width of circles
+  lty = 'dashed',  # Line type of circles
+  col = c("darkgreen", "darkred"),  # Outline colors
+  main = "Divergent pairs whe",
+  main.cex = 2,  # Main title size
+  main.fontface = "bold",
+  main.fontfamily = "sans"
+)
+
+# Draw Venn Diagram
+grid.newpage()
+grid.draw(venn.plot)
+
+# Display overlapping genes in a prettier way
+overlapping_genes <- intersect(genes_venn_OCT4, genes_venn_BRG1)  # Find overlapping genes
+
+grid.text(
+  paste(overlapping_genes, collapse = "\n"),
+  x = unit(0.5, "npc"),
+  y = unit(0.2, "npc"),  # Adjust position to avoid overlap with Venn Diagram
+  gp = gpar(fontsize = 12, fontface = "bold", fontfamily = "sans")
+)
+
+
+venn.plot <- venn.diagram(
+  x = list(OCT4 = genes_one_venn_OCT4, BRG1 = genes_one_venn_BRG1),
+  category.names = c("OCT4 genes", "BRG1 genes"),
+  filename = NULL,
+  output = TRUE,
+  fill = c("#A6D854", "#FFD92F"),
+  alpha = 0.6,  # Adjust transparency
+  cex = 1.5,
+  fontface = "bold",
+  fontfamily = "sans",
+  cat.cex = 1.5,
+  cat.fontface = "bold",
+  cat.default.pos = "text",
+  cat.pos = c(-30, 30),  # Adjust position of category labels
+  cat.dist = c(0.05, 0.05),
+  cat.fontfamily = "sans",
+  lwd = 2,  # Line width of circles
+  lty = 'dashed',  # Line type of circles
+  col = c("darkgreen", "darkred"),  # Outline colors
+  main = "Divergent pairs where regions changed differently",
+  main.cex = 2,  # Main title size
+  main.fontface = "bold",
+  main.fontfamily = "sans"
+)
+
+# Draw Venn Diagram
+grid.newpage()
+grid.draw(venn.plot)
+
+
+grid.text(
+  paste(overlapping_one_genes, collapse = "\n"),
+  x = unit(0.5, "npc"),
+  y = unit(0.2, "npc"),  # Adjust position to avoid overlap with Venn Diagram
+  gp = gpar(fontsize = 12, fontface = "bold", fontfamily = "sans")
+)
+```
+
+
+
+## CATALOGUE 
+Now creating a catalogue of bidirectional promoters fro our RNA-seq data. Using the annotation we obtained previosusly from Ensembl and rna. 
+```{r, annotation}
+
+
+# Read the BED file into a data frame
+overlapping_bed <- fread("overlapping.bed", header = FALSE)
+
+overlapping_bed$gene_id <- str_extract(overlapping_bed$V9, '(?<=gene_id ")[^"]+')
+
+colnames(overlapping_bed) <- c('chromosome', 'file', 'transcript_exon', 'start', 'end', 'dot1', 'starnd2', 'dot2', 'info', 'chrom2', 'start_2', 'end_2', 'ensembl_id', '0', 'strand', 'gene_id')
+
+overlapping_bed$chromosome <- paste0("chr", overlapping_bed$chromosome)
+overlapping_bed$chrom2 <- paste0("chr", overlapping_bed$chrom2)
+new_df <- read.table("ann_ENS.txt", header=TRUE, sep="\t", comment.char="#")
+new_df$Chromosome <- paste0('chr', new_df$Chromosome)
+
+ overlapping_bed <- overlapping_bed %>%
+  mutate(Geneid = gsub('_2$|_3$', '', gene_id))
+
+
+
+new_df <- new_df %>%
+  mutate(Geneid = gsub('_2$|_3$', '', Annotation))
+
+pattern <- '.*_[1-9]+_[23]$'
+overlapping_bed <- subset( overlapping_bed, grepl(pattern, overlapping_bed$gene_id))
+new_df <- subset( new_df, grepl(pattern, new_df$Annotation))
+
+overlapping_bed$strand <- ifelse(overlapping_bed$strand == 1, "+", "-")
+
+
+overlapping_bed$key <- paste(overlapping_bed$chromosome, overlapping_bed$start, overlapping_bed$end, overlapping_bed$strand, sep = "_")
+
+# Create composite keys for matching in new_df for positive and negative strands
+new_df$key_pos <- ifelse(!is.na(new_df$Strand_Pos), paste(new_df$Chromosome, new_df$Start, new_df$End, new_df$Strand_Pos, sep = "_"), NA)
+new_df$key_neg <- ifelse(!is.na(new_df$Strand_Neg), paste(new_df$Chromosome, new_df$Start, new_df$End, new_df$Strand_Neg, sep = "_"), NA)
+
+# Initialize ensembl_id column in new_df
+new_df$ensembl_id <- NA
+
+# Match positive strand keys and get ensembl_id
+pos_indices <- !is.na(new_df$key_pos)
+new_df$ensembl_id[pos_indices] <- overlapping_bed$ensembl_id[match(new_df$key_pos[pos_indices], overlapping_bed$key)]
+
+# Match negative strand keys and get ensembl_id, but only where ensembl_id is still NA
+neg_indices <- !is.na(new_df$key_neg) & is.na(new_df$ensembl_id)
+new_df$ensembl_id[neg_indices] <- overlapping_bed$ensembl_id[match(new_df$key_neg[neg_indices], overlapping_bed$key)]
+
+new_df <- new_df %>%
+  left_join(ranking_OCT4_treated, by = "Geneid") %>%
+  left_join(ranking_OCT4_untreated, by = "Geneid") %>%
+  left_join(ranking_BRG1_treated, by = "Geneid") %>%
+  left_join(ranking_BRG1_untreated, by = "Geneid")
+
+new_df <- relocate(new_df, Geneid, .after=Annotation)
+
+
+
+mart <- useMart("ensembl", dataset = "mmusculus_gene_ensembl")
+
+external_gene_names <- getBM(
+  attributes = c("ensembl_gene_id", "external_gene_name"),
+  filters = "ensembl_gene_id",
+  values = new_df$ensembl_id,
+  mart = mart
+)
+
+new_df <- merge(new_df, external_gene_names, by.x = "ensembl_id", by.y = "ensembl_gene_id", all.x = TRUE)
+new_df <- relocate(new_df, external_gene_name, .after=Geneid)
+
+new_df <- new_df[, -(10:13)]
+
+colnames(new_df)[10] <- 'OCT4_untreated_rank'
+colnames(new_df)[11] <- 'OCT4_tretaed_rank'
+colnames(new_df)[12] <- "BRG1_treated_rank"
+colnames(new_df)[13] <- 'BRG1_untretaed_rank'
+
+filtered_df <- new_df %>%
+  filter(!(is.na(OCT4_untreated_rank) & is.na(OCT4_tretaed_rank) & is.na(BRG1_treated_rank) & is.na(BRG1_untretaed_rank)))
+
+filtered_df <- filtered_df[order(filtered_df$Geneid) , ]
+
+filtered_df <- filtered_df %>% 
+  filter(!duplicated(filtered_df$Annotation))
+                           
+write_csv(filtered_df, '/home/s2614505/Diss/Catalogue.csv')
+
+RPM_normal <- RPM_normal[order(RPM_normal$Geneid_RPM) ,]
+
+RPM_normal <- RPM_normal %>%
+  mutate(across(where(is.numeric), ~ round(., 2)))
+  
+write_csv(RPM_normal, '/home/s2614505/Diss/RPM_normal.csv')
+
+#getting top genes from filetered df
+
+top_genes_OCT4_treated <- ranking_OCT4_treated[1:10, ] %>%
+  mutate(treatment = "OCT4_treated")
+
+top_genes_OCT4_untreated <- ranking_OCT4_untreated[1:10, ] %>%
+  mutate(treatment = "OCT4_untreated")
+
+top_genes_BRG1_treated <- ranking_BRG1_treated[1:10, ] %>%
+  mutate(treatment = "BRG1_treated")
+
+top_genes_BRG1_untreated <- ranking_BRG1_untreated[1:10, ] %>%
+  mutate(treatment = "BRG1_untreated")
+
+# Combine all datasets into one
+combined_top_genes <- rbind(
+  top_genes_OCT4_treated,
+  top_genes_OCT4_untreated,
+  top_genes_BRG1_treated,
+  top_genes_BRG1_untreated
+)
+
+filtered_genes <- combined_top_genes %>%
+  filter(combined_top_genes$Geneid %in% filtered_df$Geneid)
+top_genes <- filtered_genes %>%
+  inner_join(filtered_df, by = "Geneid")
+
+top_genes <- top_genes %>%
+  filter(!duplicated(top_genes$Annotation))
+
+top_genes <- top_genes[, -2]
+
+write_csv(top_genes, '/home/s2614505/Diss/top_genes.csv')
+
+
+
+
+```
+
+## FUNCTIONAL ENRICHMENT ANALYSIS: 
+
+Functional enrichment analysis was done using GSEA to see whether there are special class of genes in divergent pairs. Here GO was used as database to perform fucntional enrichment analysis on genes.  The rankings from previous step were used to check genes from all conditions. 
+
+```{r, functional enrichmnet analysis}
+
+# Please below provide your groups for your dataset if needed manually 
+#getting the rankings from the filtered_df file - the catalogue 
+OCT4_untreated <- filtered_df$OCT4_untreated_rank
+names(OCT4_untreated) <- filtered_df$ensembl_id
+
+OCT4_treated <- filtered_df$OCT4_tretaed_rank
+names(OCT4_treated) <- filtered_df$ensembl_id
+
+BRG1_treated <- filtered_df$BRG1_treated_rank
+names(BRG1_treated) <- filtered_df$ensembl_id
+
+BRG1_untreated <- filtered_df$BRG1_untretaed_rank
+names(BRG1_untreated) <- filtered_df$ensembl_id
+
+#sorting in a decreasing order making a vector to use in fgsea 
+OCT4_untreated <- sort(OCT4_untreated, decreasing = TRUE)
+OCT4_treated <- sort(OCT4_treated, decreasing = TRUE)
+BRG1_treated <- sort(BRG1_treated, decreasing = TRUE)
+BRG1_untreated <- sort(BRG1_untreated, decreasing = TRUE)
+
+
+# function to do fgsea 
+run_fgsea_and_save <- function(ranking_vector, mart, file_name, minSize = 15, maxSize = 500) {
+  
+  #getting go terms for ensembl in the ranking vector with teh ranking of our genes 
+  go_terms <- getBM(
+    attributes = c("ensembl_gene_id", "go_id"),
+    filters = "ensembl_gene_id",
+    values = names(ranking_vector),
+    mart = mart
+  )
+  
+  #getting pathways - list of geens with each go terms 
+  go_list <- split(go_terms$ensembl_gene_id, go_terms$go_id)
+  
+  # getting GO names 
+  go_names <- Term(GOTERM)
+  
+  #converting go names in the data frame 
+  go_names_df <- data.frame(go_id = names(go_names), name = as.character(go_names))
+  
+  #running fgsea 
+  fgsea_results <- fgsea(pathways = go_list, 
+                         stats = ranking_vector, 
+                         minSize = minSize, 
+                         maxSize = maxSize, 
+                         )
+  
+  print("FGSEA done")
+  
+  #merginf fgsea results with go 
+  fgsea_results_merge <- fgsea_results
+  fgsea_results_merge$go_name <- go_names_df$name[match(fgsea_results_merge$pathway, go_names_df$go_id)]
+  
+  #convert leadingEdge to a string t save 
+  fgsea_results_merge[, leadingEdge := sapply(leadingEdge, toString)]
+  
+  #saving results for each rank in csv 
+  write.csv(fgsea_results_merge, file_name, row.names = FALSE)
+  message("FGSEA results saved to ", file_name)
+  
+  return(fgsea_results_merge)  # Optionally return the results
+}
+
+# Example usage with your ranking vectors
+mart <- useMart("ensembl", dataset = "mmusculus_gene_ensembl")  # Adjust species accordingly
+
+# Running the function for OCT4_untreated
+fgsea_results_OCT4_untreated <- run_fgsea_and_save(
+  ranking_vector = OCT4_untreated, 
+  mart = mart, 
+  file_name = "fgsea_results_OCT4_untreated.csv"
+)
+
+# Similarly, you can run it for other ranking vectors:
+fgsea_results_OCT4_treated <- run_fgsea_and_save(
+  ranking_vector = OCT4_treated, 
+  mart = mart, 
+  file_name = "fgsea_results_OCT4_treated.csv"
+)
+
+fgsea_results_BRG1_treated <- run_fgsea_and_save(
+  ranking_vector = BRG1_treated, 
+  mart = mart, 
+  file_name = "fgsea_results_BRG1_treated.csv"
+)
+
+fgsea_results_BRG1_untreated <- run_fgsea_and_save(
+  ranking_vector = BRG1_untreated, 
+  mart = mart, 
+  file_name = "fgsea_results_BRG1_untreated.csv"
+)
+
+  
+
+
+
+
+
+```
