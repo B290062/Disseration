@@ -17,7 +17,7 @@ config = configparser.ConfigParser()
 config.read('config.ini')
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--accession", action="store", required=True, help="The accession is the study number from Gene Expression Omnibus (e.g GSE87821)")
+parser.add_argument("--accession", action="store", required=True, help="The accession is the SRA number from Gene Expression eg for GSE87821 it would be SRP091444)")
 #store_true used for optional values, when the value is present it will be True so this can be used to write functions.
 #https://docs.python.org/3/library/argparse.html#action
 parser.add_argument("--trim", action="store_true", required=False, help = "The data can be optionally trimmed if the user requires")
@@ -49,6 +49,7 @@ def SRA_download(args):
         time.sleep(0.5)
 
 def Quality_control(args):
+    #produces FastQC files which allow the user to examine to determine the quality of the data.
     print('Beginning performing quality control...')
     print('---------------------------------')
     time.sleep(0.5)
@@ -77,7 +78,7 @@ def Quality_control(args):
         print('---------------------------------------')
 
 def Trimming(args):
-    #trimming opton Note- this is for simple trimming only, not linked adapter trimming
+    #trimming option Note- this is for simple trimming only, not linked adapter trimming
     
     if args.trim is False:
         print('Proceeding without trimming...')
@@ -104,7 +105,7 @@ def Trimming(args):
                         print('-----------------')
                         
 def Multiqc(args):
-
+    #this method takes all of the FastQC files and combines them into a MultiQC for easier interpretation
     if args.multiqc is False:
         print('MultiQC was not performed')
         return
@@ -125,6 +126,7 @@ def Multiqc(args):
             print('---------------------------')                    
 
 def STAR_files_fasta(args):
+    #this function enables the download of the STAR FASTA genome files
     print('Downloading assembly for Mus musculus')
     print('--------------------------')
     fatsa_download = subprocess.run('wget ' +  args.fasta, shell = True)
@@ -137,6 +139,7 @@ def STAR_files_fasta(args):
         time.sleep(0.5)
         
 def STAR_files_GTF(args):
+    # function provides the annotation coordinates
     print('Downloading GTF')
     print('--------------------------')
     GTF_download = subprocess.run(' wget ' + args.gtf, shell = True)
@@ -148,7 +151,8 @@ def STAR_files_GTF(args):
         print('-----------------------------')
         time.sleep(0.5)
 
-def Unzip(args): 
+def Unzip(args):
+    # STAR files and compressed when downloaded and therefore need to be unzipped. 
     time.sleep(0.5)
     gz_files = glob.glob('*.gz')
     if not gz_files:
