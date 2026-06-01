@@ -147,7 +147,29 @@ def STAR_files_GTF(args):
         print('GTF download successful')
         print('-----------------------------')
         time.sleep(0.5)
-            
+
+def Unzip(args): 
+    time.sleep(0.5)
+    gz_files = glob.glob('*.gz')
+    if not gz_files:
+        print('Unzipping of STAR files failed, please try again.')
+        exit(1)
+    else:
+        print('Begin to unzip files')
+        print('--------------------')
+        unzip = subprocess.run(['gunzip'] + gz_files)
+        if unzip.returncode !=0:
+            print('The zipped files were unable to be unzipped.')
+            exit(1)
+        else:
+            print('Both files unziped')
+            print('-------------------')
+            time.sleep(0.5)
+            files = os.listdir('.')
+            print('Files in the current directory:')
+            print('-------------------------------')
+            for file in files:
+                print(file)
 
 def main():
     args = parser.parse_args()
@@ -157,6 +179,7 @@ def main():
     Multiqc(args)
     STAR_files_fasta(args)
     STAR_files_GTF(args)
+    Unzip(args)
 
 if __name__ == '__main__':
     main()
