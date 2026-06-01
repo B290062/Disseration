@@ -6,11 +6,15 @@ import zipfile
 import glob 
 import shutil
 import pandas as pd 
+import configparser
 
 print("################################################################### ")
-print("# Welcome to the divergent transcription promoter analysis tool!  #")
+print("# Welcome to the Divergent Transcription Promoter Analysis Tool   #")
 print("# For usage information please type --help in the command terminal#")
 print("################################################################### ")
+
+config = configparser.ConfigParser()
+config.read('config.ini')
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--accession", action="store", required=True, help="The accession is the study number from Gene Expression Omnibus (e.g GSE87821)")
@@ -21,6 +25,11 @@ parser.add_argument("--adapter1",required=False,help="The first adapter required
 parser.add_argument("--adapter2",required=False, help="The second adapter required for trimming") 
 parser.add_argument("--multiqc", action="store_true", required=False, help = "This argument enables the use of MutliQC")
 #Function to download fastq files from SRA 
+parser.add_argument("--fasta", default=config["urls"]["fasta_url"], help = "This is the link to the FASTA file from Ensembl it can be" \
+"changed in the command line or via pasting a new link into the config file")
+parser.add_argument("--gtf", default =config["urls"]["gtf_url"], help = "Link to the GTF file from Ensembl, can be overwriten in " \
+"the config or changed via the command line.")
+
 def SRA_download(args): 
     #replaced with makedirs instead of os.mkdirs as it has the exist_ok function which prevents crashing
     #when the folder is already created.
@@ -66,7 +75,6 @@ def Quality_control(args):
         time.sleep(0.5)
         print('All the files are in the fastqc directory')
         print('---------------------------------------')
-
 
 def Trimming(args):
     #trimming opton Note- this is for simple trimming only, not linked adapter trimming
@@ -116,12 +124,39 @@ def Multiqc(args):
             time.sleep(0.5)
             print('---------------------------')                    
 
+def STAR_files_fasta(args):
+    print('Downloading assembly for Mus musculus')
+    print('--------------------------')
+    fatsa_download = subprocess.run('wget ' +  args.fasta, shell = True)
+    if fatsa_download.returncode !=0:
+        print('Error occured while attempting to download FASTA file...')
+        exit(1)
+    else:
+        print('FASTA download successful')
+        print('-----------------------------')
+        time.sleep(0.5)
+        
+def STAR_files_GTF(args):
+    print('Downloading GTF for Mus musculus')
+    print('--------------------------')
+    GTF_download = subprocess.run(' wget ' + args.gtf, shell = True)
+    if GTF_download.returncode !=0:
+        print('Error occured while attempting to download GTF file...')
+        exit(1)
+    else: 
+        print('gtf download successful')
+        print('-----------------------------')
+        time.sleep(0.5)
+            
+
 def main():
     args = parser.parse_args()
     SRA_download(args)
     Quality_control(args)
     Trimming(args)
     Multiqc(args)
+    STAR_files_fasta(args)
+    STAR_files_GTF(args)
 
 if __name__ == '__main__':
     main()
