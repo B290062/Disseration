@@ -23,7 +23,7 @@ parser.add_argument("--sra", action="store", required=True, help="This is the SR
 parser.add_argument("--trim", action="store_true", required=False, help = "The data can be optionally trimmed if the user requires")
 parser.add_argument("--adapter1",required=False,help="The first adapter required for trimming")
 parser.add_argument("--adapter2",required=False, help="The second adapter required for trimming") 
-parser.add_argument("--multiqc", action="store_true", required=False, help = "This argument enables the use of MutliQC")
+parser.add_argument("--multiqc", action="store_true", required=False, help = "This argument enables the use of MultiQC")
 #Function to download fastq files from SRA 
 parser.add_argument("--fasta", help = "This is the file path for the fasta file")
 parser.add_argument("--gtf",  help = "This is the file path for the gtf file")
@@ -34,14 +34,13 @@ def SRA_download(args):
     os.makedirs("SRA", exist_ok=True)
     print('A Directory called SRA was created.')
     print('-----------------')
-    os.chdir("SRA")
     print('Attempting to download fastq files from GEO')
     print('----------------------------------------------------')
     #if statement adapted from https://www.geeksforgeeks.org/python/check-if-directory-contains-file-using-python/
     #this checks if the current directory "SRA" contains one or more files and skips the download process if true
     #essential as the SRA files for any given study are very large.
     #this could also be replaced with a download skip argument that runs main without the SRA, FASTA, and GTF download steps. implement later.
-    if len(os.listdir(".")) > 0:
+    if len(os.listdir("SRA")) > 0:
         print("SRA files were detected, inside the SRA directory, therefore the download will be skipped")
         return
     #this search function looks at at the SRA database, however the search command could be adapted for GEO number...
@@ -76,7 +75,6 @@ def Quality_control(args):
     fastqc_run = subprocess.run('fastqc * -o FastQC', shell=True)
     if fastqc_run.returncode !=0:
         print('FastQC were not able to be produced')
-        exit(1)
     else:
         print('Finished FastQC analysis')
         print('-------------------------')
@@ -215,7 +213,7 @@ def Indexing(args):
         print("the index is already present so STAR is skipped")
         return
     os.makedirs("ref", exist_ok=True)
-
+    #runs STAR alignment with the fasta and gtf file to produce a reference
     index = subprocess.run('STAR --runMode genomeGenerate --genomeDir ' + "ref" + '/ --genomeFastaFiles ' + args.fasta + ' --sjdbGTFfile ' + args.gtf + ' --runThreadN 10', shell=True)
     if index.returncode !=0:
         print('Index error occured')
