@@ -17,8 +17,9 @@ parser.add_argument("--accession", action="store", required=True, help="The acce
 #store_true used for optional values, when the value is present it will be True so this can be used to write functions.
 #https://docs.python.org/3/library/argparse.html#action
 parser.add_argument("--trim", action="store_true", required=False, help = "The data can be optionally trimmed if the user requires")
-parser.add_argument("--adapter1",help="The first adapter required for trimming")
-parser.add_argument("--adapter2", help="The second adapter required for trimming") 
+parser.add_argument("--adapter1",required=False,help="The first adapter required for trimming")
+parser.add_argument("--adapter2",required=False, help="The second adapter required for trimming") 
+parser.add_argument("--multiqc", action="store_true", required=False, help = "This argument enables the use of MutliQC")
 #Function to download fastq files from SRA 
 def SRA_download(args): 
     #replaced with makedirs instead of os.mkdirs as it has the exist_ok function which prevents crashing
@@ -68,8 +69,7 @@ def Quality_control(args):
 
 
 def Trimming(args):
-
-#trimming opton Note- this is for simple trimming only, not linked adapter trimming
+    #trimming opton Note- this is for simple trimming only, not linked adapter trimming
     
     if args.trim is False:
         print('Proceeding without trimming...')
@@ -95,13 +95,33 @@ def Trimming(args):
                         print('The trimming is now done..')
                         print('-----------------')
                         
-                    
+def Multiqc(args):
+
+    if args.multiqc is False:
+        print('MultiQC was not performed')
+        return
+    if args.multiqc is True:
+        print('Performing MultiQC....')
+        time.sleep(0.5)
+        print('--------------------------')
+        multiqc_run = subprocess.run('multiqc .', shell = True)
+        if multiqc_run.returncode !=0:
+            print('Error occured while running MultiQC')
+            exit(1)
+        else:
+            print('-----------------------------')
+            print('Finished MultiQC')
+            time.sleep(0.5)
+            print('MultiQC directory was produced containing the results')
+            time.sleep(0.5)
+            print('---------------------------')                    
 
 def main():
     args = parser.parse_args()
     SRA_download(args)
     Quality_control(args)
     Trimming(args)
+    Multiqc(args)
 
 if __name__ == '__main__':
     main()
