@@ -25,10 +25,8 @@ parser.add_argument("--adapter1",required=False,help="The first adapter required
 parser.add_argument("--adapter2",required=False, help="The second adapter required for trimming") 
 parser.add_argument("--multiqc", action="store_true", required=False, help = "This argument enables the use of MutliQC")
 #Function to download fastq files from SRA 
-parser.add_argument("--fasta", default=config["urls"]["fasta_url"], help = "This is the link/path to the FASTA file from Ensembl it can be" \
-"changed in the command line or via pasting a new link/path into the config file")
-parser.add_argument("--gtf", default =config["urls"]["gtf_url"], help = "Link to the GTF file from Ensembl, can be overwriten in " \
-"the config or changed via the command line.")
+parser.add_argument("--fasta", help = "This is the file path for the fasta file")
+parser.add_argument("--gtf",  help = "This is the file path for the gtf file")
 
 def SRA_download(args): 
     #replaced with makedirs instead of os.mkdirs as it has the exist_ok function which prevents crashing
@@ -42,9 +40,11 @@ def SRA_download(args):
     #if statement adapted from https://www.geeksforgeeks.org/python/check-if-directory-contains-file-using-python/
     #this checks if the current directory "SRA" contains one or more files and skips the download process if true
     #essential as the SRA files for any given study are very large.
+    #this could also be replaced with a download skip argument that runs main without the SRA, FASTA, and GTF download steps. implement later.
     if len(os.listdir(".")) > 0:
         print("SRA files were detected, inside the SRA directory, therefore the download will be skipped")
         return
+    #this search function looks at at the SRA database, however the search command could be adapted for GEO number...
     download = subprocess.run("esearch -db sra -query " +  args.sra + " | efetch -format runinfo | cut -d ',' -f 1 | grep SRR | xargs fastq-dump  --skip-technical  --readids --read-filter pass --dumpbase --split-3", shell=True)
     if download.returncode !=0:
         print('Error occured during download of fastQ files')
@@ -67,11 +67,12 @@ def Quality_control(args):
     print('--------')
 
 
-#running FastQC
+    #running FastQC
 
     print('Running FastQC....')
     time.sleep(0.5)
     print('---------------')
+    #runs fastqc on all the files in the SRA folder
     fastqc_run = subprocess.run('fastqc * -o FastQC', shell=True)
     if fastqc_run.returncode !=0:
         print('FastQC were not able to be produced')
@@ -93,7 +94,7 @@ def Trimming(args):
     if args.trim is True:
         os.makedirs("Trimmed_data", exist_ok=True)
         if not os.path.exists('SRA'):
-            print('The sra directory does not exist. Exiting.')
+            print('The SRA directory does not exist. Exiting.')
             exit(1)
             
         for file in os.listdir('SRA'):
@@ -137,11 +138,11 @@ def STAR_files_fasta(args):
     #this was adapted from the previous code from the unzip function.
     gz_files = glob.glob('*.gz')
     if len(gz_files) > 0:
-        print("Fasta and GFT files detected. skipping the download")
+        print("Fasta detected. skipping the download")
         return
-    print(f'Downloading assembly {args.fasta}')
+    print(f'Downloading assembly {config["urls"]["fasta_url"]}')
     print('--------------------------')
-    fatsa_download = subprocess.run('wget ' +  args.fasta, shell = True)
+    fatsa_download = subprocess.run('wget ' +  config['urls']["fasta_url"], shell = True)
     if fatsa_download.returncode !=0:
         print('Error occured while attempting to download FASTA file...')
         exit(1)
@@ -152,9 +153,13 @@ def STAR_files_fasta(args):
         
 def STAR_files_GTF(args):
     # function provides the annotation coordinates
-    print(f'Downloading GTF {args.gtf}')
+    gz_files = glob.glob('*.gz')
+    if len(gz_files) > 0:
+        print("GFT files detected. skipping the download")
+        return
+    print(f'Downloading GTF {config["urls"]["gtf_url"]}')
     print('--------------------------')
-    GTF_download = subprocess.run(' wget ' + args.gtf, shell = True)
+    GTF_download = subprocess.run(' wget ' + config["urls"]["gtf_url"], shell = True)
     if GTF_download.returncode !=0:
         print('Error occured while attempting to download GTF file...')
         exit(1)
@@ -178,7 +183,7 @@ def Unzip(args):
             print('The zipped files were unable to be unzipped.')
             exit(1)
         else:
-            print('Both files unziped')
+            print('Both files unzipped')
             print('-------------------')
             time.sleep(0.5)
             files = os.listdir('.')
@@ -187,59 +192,34 @@ def Unzip(args):
             for file in files:
                 print(file)
 
-def Indexing():
-    print('Now starting to build index')
+def Indexing(args):
+    print('Index is being built')
     time.sleep(0.5)
-    while True:
-        print('Please provide full pass to the files from your diretory')
-        print('Example: /home/s2614505/Diss/Mus_musculus.GRCm39.dna_sm.primary_assembly.fa')
+    if os.path.isfile(args.fasta):
+        print('The file exists', args.fasta)
         time.sleep(0.5)
-        fa_path = input('Please provide full path for fa file: ')
-        if os.path.isfile(fa_path):
-            print('The file exists', fa_path)
-            time.sleep(0.5)
-            break
-        else: 
-            print('File not found, please try again')
-
-    while True:  
-        print('Example for GTF: /home/s2614505/Diss/Mus_musculus.GRCm39.112.gtf ')
-        GTF_path = input('Please provide path for GTF file: ')
-        if os.path.isfile(GTF_path):
-            print('The file exists', GTF_path)
-            time.sleep(0.5)
-            break
-        else: 
-            print('File not found, please try again')
-    
-    while True:
-        print('Please provide a full path to ypur home directory where sra and ref directories can be found')
-        print('Example: /home/s2614505/Diss/')
-        home_path = input('Path: ')
-        if os.path.isdir(home_path):
-            print('Path is valid proceeding...')
-            print('Proceding...')
-            time.sleep(0.5)
-            os.chdir(home_path)
-            break 
-        else: 
-            print('Not valid path, please try again')
-    
-    directory_ref = ('ref')
-    try:
-        os.mkdir(directory_ref)
-    except OSError as error:
-        print('the error:', error)
-        time.sleep(0.5)
-        print('Directory called ' + directory_ref + ' craeted' )
-        print('Results of indexing will be stored there')
-        time.sleep(0.5)
-        print('--------')
-
         
-    index = subprocess.run('STAR --runMode genomeGenerate --genomeDir ' + directory_ref + '/ --genomeFastaFiles ' + fa_path + ' --sjdbGTFfile ' + GTF_path + ' --runThreadN 10', shell=True)
+    else: 
+        print('Fasta file not found')
+        exit(1)
+    
+    if os.path.isfile(args.gtf):
+        print('The file exists', args.gtf)
+        time.sleep(0.5)
+        
+    else:
+        print('GTF file not found, please try again')
+        exit(1)
+    
+    if os.path.exists('ref') and len(os.listdir("ref")) > 1:
+        print("the index is already present so STAR is skipped")
+        return
+    os.makedirs("ref", exist_ok=True)
+
+    index = subprocess.run('STAR --runMode genomeGenerate --genomeDir ' + "ref" + '/ --genomeFastaFiles ' + args.fasta + ' --sjdbGTFfile ' + args.gtf + ' --runThreadN 10', shell=True)
     if index.returncode !=0:
-        print('Error occured, please try again')
+        print('Index error occured')
+        exit(1)
     else:
         print('Indexing done!')
         print('---------------')
@@ -254,6 +234,7 @@ def main():
     STAR_files_fasta(args)
     STAR_files_GTF(args)
     Unzip(args)
+    Indexing(args)
 
 if __name__ == '__main__':
     main()
