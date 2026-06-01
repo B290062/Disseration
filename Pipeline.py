@@ -137,14 +137,14 @@ def STAR_files_fasta(args):
         time.sleep(0.5)
         
 def STAR_files_GTF(args):
-    print('Downloading GTF for Mus musculus')
+    print('Downloading GTF')
     print('--------------------------')
     GTF_download = subprocess.run(' wget ' + args.gtf, shell = True)
     if GTF_download.returncode !=0:
         print('Error occured while attempting to download GTF file...')
         exit(1)
     else: 
-        print('gtf download successful')
+        print('GTF download successful')
         print('-----------------------------')
         time.sleep(0.5)
             
