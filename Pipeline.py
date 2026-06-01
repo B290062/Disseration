@@ -39,6 +39,12 @@ def SRA_download(args):
     os.chdir("SRA")
     print('Attempting to download fastq files from GEO')
     print('----------------------------------------------------')
+    #if statement adapted from https://www.geeksforgeeks.org/python/check-if-directory-contains-file-using-python/
+    #this checks if the current directory "SRA" contains one or more files and skips the download process if true
+    #essential as the SRA files for any given study are very large.
+    if len(os.listdir(".")) > 0:
+        print("SRA files were detected, inside the SRA directory, therefore the download will be skipped")
+        return
     download = subprocess.run("esearch -db sra -query " +  args.accession + " | efetch -format runinfo | cut -d ',' -f 1 | grep SRR | xargs fastq-dump  --skip-technical  --readids --read-filter pass --dumpbase --split-3", shell=True)
     if download.returncode !=0:
         print('Error occured during download of fastQ files')
@@ -127,7 +133,11 @@ def Multiqc(args):
 
 def STAR_files_fasta(args):
     #this function enables the download of the STAR FASTA genome files
-    print('Downloading assembly for Mus musculus')
+    gz_files = glob.glob('*.gz')
+    if len(gz_files) > 0:
+        print("Fasta and GFT files detected. skipping the download")
+        return
+    print(f'Downloading assembly {args.fasta}')
     print('--------------------------')
     fatsa_download = subprocess.run('wget ' +  args.fasta, shell = True)
     if fatsa_download.returncode !=0:
@@ -140,7 +150,7 @@ def STAR_files_fasta(args):
         
 def STAR_files_GTF(args):
     # function provides the annotation coordinates
-    print('Downloading GTF')
+    print(f'Downloading GTF {args.gtf}')
     print('--------------------------')
     GTF_download = subprocess.run(' wget ' + args.gtf, shell = True)
     if GTF_download.returncode !=0:
