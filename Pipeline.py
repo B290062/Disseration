@@ -17,7 +17,7 @@ config = configparser.ConfigParser()
 config.read('config.ini')
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--accession", action="store", required=True, help="The accession is the SRA number from Gene Expression eg for GSE87821 it would be SRP091444)")
+parser.add_argument("--sra", action="store", required=True, help="This is the SRA number from Gene Expression eg for GSE87821 it would be SRP091444)")
 #store_true used for optional values, when the value is present it will be True so this can be used to write functions.
 #https://docs.python.org/3/library/argparse.html#action
 parser.add_argument("--trim", action="store_true", required=False, help = "The data can be optionally trimmed if the user requires")
@@ -25,8 +25,8 @@ parser.add_argument("--adapter1",required=False,help="The first adapter required
 parser.add_argument("--adapter2",required=False, help="The second adapter required for trimming") 
 parser.add_argument("--multiqc", action="store_true", required=False, help = "This argument enables the use of MutliQC")
 #Function to download fastq files from SRA 
-parser.add_argument("--fasta", default=config["urls"]["fasta_url"], help = "This is the link to the FASTA file from Ensembl it can be" \
-"changed in the command line or via pasting a new link into the config file")
+parser.add_argument("--fasta", default=config["urls"]["fasta_url"], help = "This is the link/path to the FASTA file from Ensembl it can be" \
+"changed in the command line or via pasting a new link/path into the config file")
 parser.add_argument("--gtf", default =config["urls"]["gtf_url"], help = "Link to the GTF file from Ensembl, can be overwriten in " \
 "the config or changed via the command line.")
 
@@ -45,7 +45,7 @@ def SRA_download(args):
     if len(os.listdir(".")) > 0:
         print("SRA files were detected, inside the SRA directory, therefore the download will be skipped")
         return
-    download = subprocess.run("esearch -db sra -query " +  args.accession + " | efetch -format runinfo | cut -d ',' -f 1 | grep SRR | xargs fastq-dump  --skip-technical  --readids --read-filter pass --dumpbase --split-3", shell=True)
+    download = subprocess.run("esearch -db sra -query " +  args.sra + " | efetch -format runinfo | cut -d ',' -f 1 | grep SRR | xargs fastq-dump  --skip-technical  --readids --read-filter pass --dumpbase --split-3", shell=True)
     if download.returncode !=0:
         print('Error occured during download of fastQ files')
         exit(1)
@@ -133,6 +133,8 @@ def Multiqc(args):
 
 def STAR_files_fasta(args):
     #this function enables the download of the STAR FASTA genome files
+    #checks if .gz files already exist in the directory to skip the download
+    #this was adapted from the previous code from the unzip function.
     gz_files = glob.glob('*.gz')
     if len(gz_files) > 0:
         print("Fasta and GFT files detected. skipping the download")
@@ -184,6 +186,64 @@ def Unzip(args):
             print('-------------------------------')
             for file in files:
                 print(file)
+
+def Indexing():
+    print('Now starting to build index')
+    time.sleep(0.5)
+    while True:
+        print('Please provide full pass to the files from your diretory')
+        print('Example: /home/s2614505/Diss/Mus_musculus.GRCm39.dna_sm.primary_assembly.fa')
+        time.sleep(0.5)
+        fa_path = input('Please provide full path for fa file: ')
+        if os.path.isfile(fa_path):
+            print('The file exists', fa_path)
+            time.sleep(0.5)
+            break
+        else: 
+            print('File not found, please try again')
+
+    while True:  
+        print('Example for GTF: /home/s2614505/Diss/Mus_musculus.GRCm39.112.gtf ')
+        GTF_path = input('Please provide path for GTF file: ')
+        if os.path.isfile(GTF_path):
+            print('The file exists', GTF_path)
+            time.sleep(0.5)
+            break
+        else: 
+            print('File not found, please try again')
+    
+    while True:
+        print('Please provide a full path to ypur home directory where sra and ref directories can be found')
+        print('Example: /home/s2614505/Diss/')
+        home_path = input('Path: ')
+        if os.path.isdir(home_path):
+            print('Path is valid proceeding...')
+            print('Proceding...')
+            time.sleep(0.5)
+            os.chdir(home_path)
+            break 
+        else: 
+            print('Not valid path, please try again')
+    
+    directory_ref = ('ref')
+    try:
+        os.mkdir(directory_ref)
+    except OSError as error:
+        print('the error:', error)
+        time.sleep(0.5)
+        print('Directory called ' + directory_ref + ' craeted' )
+        print('Results of indexing will be stored there')
+        time.sleep(0.5)
+        print('--------')
+
+        
+    index = subprocess.run('STAR --runMode genomeGenerate --genomeDir ' + directory_ref + '/ --genomeFastaFiles ' + fa_path + ' --sjdbGTFfile ' + GTF_path + ' --runThreadN 10', shell=True)
+    if index.returncode !=0:
+        print('Error occured, please try again')
+    else:
+        print('Indexing done!')
+        print('---------------')
+        time.sleep(0.5)    
 
 def main():
     args = parser.parse_args()
