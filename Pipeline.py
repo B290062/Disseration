@@ -27,6 +27,8 @@ parser.add_argument("--multiqc", action="store_true", required=False, help = "Th
 #Function to download fastq files from SRA 
 parser.add_argument("--fasta", help = "This is the file path for the fasta file")
 parser.add_argument("--gtf",  help = "This is the file path for the gtf file")
+parser.add_argument("--mode", choices= ["rnaseq", "groseq"], required = True, help= "The type of data the user wants to analyse, either " \
+"RNA-Seq or GRO-seq data")
 
 def SRA_download(args): 
     #replaced with makedirs instead of os.mkdirs as it has the exist_ok function which prevents crashing
@@ -223,6 +225,65 @@ def Indexing(args):
         print('---------------')
         time.sleep(0.5)    
 
+def STAR_map(args):
+     #main adaptation of this function involves mapping GRO-seq data too, I investigated how other pipelines do this
+    # The difference in processing is that GRO-seq is single end sequencing while RNA-Seq is paired end.
+    # https://github.com/Danko-Lab/proseq2.0/blob/master/proseq2.0.bsh
+    print('The next step is to perform mapping')
+    #this function was especially cluttered in the previous code, the issue of the FASTQC file directory being a subdirectory of
+    # SRA was fixed earlier so many of the inputs previously present here are not relevent
+    #  also many of the inputs appeared irrelevent so they were re   
+    os.makedirs("Alignment", exist_ok=True)
+    print("Alignment directory was created.")
+    
+    find_base = subprocess.run("find . -name 'SRR*' -print| sort | uniq", shell=True, capture_output= True, text=True)
+    if find_base.returncode !=0:
+        print('Error occured')
+    else:
+        time.sleep(0.5)
+        print('-----------------')
+        print('Reads found:')
+        time.sleep(0.5)
+        names = set()
+        for line in find_base.stdout.splitlines():
+            name = line.strip().split('/')[-1]
+            name = name.split('_')[0]
+            names.add(name)
+        for name in sorted(names):
+            print(name)
+    time.sleep(0.7)
+    print('Beginning aligment')
+    print('-----------------')
+
+    #defining bases
+    if args.mode == "rnaseq":
+        for name in sorted(names):
+            fq1 = os.path.join('SRA', name + '_pass_1.fastq')
+            fq2 = os.path.join('SRA', name + '_pass_2.fastq')
+            aligned_read = os.path.join("Alignment", name)
+            time.sleep(0.5)
+            map = subprocess.run("STAR --runThreadN 10 --genomeDir " + "ref" +  " --readFilesIn " + fq1 + " " + fq2 + " " "--outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --outFileNamePrefix " + aligned_read + "_", shell=True)
+            if map.returncode !=0: 
+                print('Error occured during mapping')
+                exit(1)
+            else: 
+                print('Finished mapping')  
+    
+    #if the mode is not RNA-Seq it must be GRO-Seq which, is single ended, therefore only Fq1 is needed.
+    else:
+        for name in sorted(names):
+            fq1 = os.path.join("SRA", name + "_pass_1.fastq")
+            aligned_read = os.path.join("Alignment", name)
+            time.sleep(0.5)
+            map = subprocess.run("STAR --runThreadN 10 --genomeDir " + "ref" +  " --readFilesIn " + fq1 + "  --outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --outFileNamePrefix " + aligned_read + "_", shell=True)
+            if map.returncode !=0: 
+                print('Error occured during mapping')
+                exit(1)
+            else: 
+                print('Finished mapping')  
+            
+
+
 def main():
     args = parser.parse_args()
     SRA_download(args)
@@ -233,6 +294,7 @@ def main():
     STAR_files_GTF(args)
     Unzip(args)
     Indexing(args)
+    STAR_map(args)
 
 if __name__ == '__main__':
     main()
