@@ -447,25 +447,32 @@ def featureCounts(args):
         print('Alignment path not detected')
         exit(1)
     
-    print('Please provide path for bed file : /home/s2614505/Diss/my.gtf')
-    gtffile_path = input('Path: ')
-    if os.path.isfile(gtffile_path):
-        print('Path exists!')
-        print('Proceeding...')
-    else: 
-        print('Soemthing went wrong')
+    gtf_file_name = args.mask.replace(".bed",".gtf")
+    if not os.path.isfile(gtf_file_name):
+        print("Bed file not found")
+        exit(1)
     
-    print('Begining to perform featureCounts')
+    print('Beginning to perform featureCounts')
     print('-----------------------------------')
-
-    feature = subprocess.run('featureCounts -s 2 -a ' + gtffile_path + ' -o counts.txt -T 10 -p ' + aligmnet_path + '/*bam', shell=True)
-    if feature.returncode !=0:
-        print('Error occured')
+    if args.mode == "rnaseq":
+        feature = subprocess.run('featureCounts -s 2 -a ' + gtf_file_name + ' -o counts.txt -T 10 -p ' + alignment_path + '/*bam', shell=True)
+        if feature.returncode !=0:
+            print('Error occured')
+            exit(1)
+        else:
+            print('Created counts.txt and counts.txt.summary')
+            print('-------------------')
+            time.sleep(0.5)
+    #Feature counts has the -p flag which corresponds to counting paired end data, this is removed for the Gro-seq as its single ended
     else:
-        print('Created counts.txt and counts.txt.summary')
-        print('-------------------')
-        time.sleep(0.5)
-
+        feature = subprocess.run('featureCounts -s 2 -a ' + gtf_file_name + ' -o counts.txt -T 10 ' + alignment_path + '/*bam', shell=True)
+        if feature.returncode !=0:
+            print('Error occured')
+            exit(1)
+        else:
+            print('Created counts.txt and counts.txt.summary')
+            print('-------------------')
+            time.sleep(0.5)
 
 def main():
     args = parser.parse_args()
@@ -479,6 +486,7 @@ def main():
     Indexing(args)
     STAR_map(args)
     Bed_file_making(args)
+    featureCounts(args)
 
 if __name__ == '__main__':
     main()
