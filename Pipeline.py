@@ -46,6 +46,7 @@ def SRA_download(args):
     #this could also be replaced with a download skip argument that runs main without the SRA, FASTA, and GTF download steps. implement later.
     if len(os.listdir("SRA")) > 0:
         print("SRA files were detected, inside the SRA directory, therefore the download will be skipped")
+        os.chdir("..")
         return
     #this search function looks at at the SRA database, however the search command could be adapted for GEO number...
     download = subprocess.run("esearch -db sra -query " +  args.sra + " | efetch -format runinfo | cut -d ',' -f 1 | grep SRR | xargs fastq-dump  --skip-technical  --readids --read-filter pass --dumpbase --split-3", shell=True)
@@ -56,6 +57,7 @@ def SRA_download(args):
         print('Download completed')
         print('------------------')
         time.sleep(0.5)
+        os.chdir("..")
 
 def Quality_control(args):
     #produces FastQC files which allow the user to examine to determine the quality of the data.
@@ -529,6 +531,7 @@ def main():
     STAR_map(args)
     Bed_file_making(args)
     featureCounts(args)
+    Final(args)
 
 if __name__ == '__main__':
     main()
