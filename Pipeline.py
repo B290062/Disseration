@@ -25,10 +25,12 @@ parser.add_argument("--adapter1",required=False,help="The first adapter required
 parser.add_argument("--adapter2",required=False, help="The second adapter required for trimming") 
 parser.add_argument("--multiqc", action="store_true", required=False, help = "This argument enables the use of MultiQC")
 #Function to download fastq files from SRA 
-parser.add_argument("--fasta", help = "This is the file path for the fasta file")
-parser.add_argument("--gtf",  help = "This is the file path for the gtf file")
+parser.add_argument("--fasta", required = False, default =config["dir"]["fasta"], help = "This is the file path for the fasta file")
+parser.add_argument("--gtf",required = False, default=config["dir"]["gtf"] , help = "This is the file path for the gtf file")
 parser.add_argument("--mode", choices= ["rnaseq", "groseq"], required = True, help= "The type of data the user wants to analyse, either " \
 "RNA-Seq or GRO-seq data")
+parser.add_argument("--mask", required = True, help="This is the BED file that has coordinates of the region of interest e.g promoters, enhancers.")
+parser.add_argument("--window", type= int, default = 500, help="Number of bases flanking the promoter/enchancer region")
 
 def SRA_download(args): 
     #replaced with makedirs instead of os.mkdirs as it has the exist_ok function which prevents crashing
@@ -282,6 +284,187 @@ def STAR_map(args):
             else: 
                 print('Finished mapping')  
             
+def Bed_file_making(args):
+    #this is the bed file, that is used as coordinates
+    if os.path.isfile(args.mask):
+        print('File found: ', args.mask)
+    else:
+        print('File not found')
+        time.sleep(0.5)
+        print('Please try again')
+        exit(1)
+    
+    print('To modify bed file for further analysis, flankbed tool will be used')
+    time.sleep(0.5)
+    print('Need to generate genome.sizes from fasta file')
+    time.sleep(0.5)
+    fasta_p = args.fasta
+    if os.path.isfile(fasta_p):
+        print('The file exists', fasta_p)
+        print('------------------------')
+        time.sleep(0.5)
+    else: 
+        print('File not found, please try again')
+        exit(1)
+    
+    print('Modifying BED file for further analyis')
+    print('--------------------------------------')
+    time.sleep(0.5)
+    fasta_to_fai = subprocess.run('samtools faidx ' + fasta_p, shell=True)
+    time.sleep(0.5)
+    if fasta_to_fai.returncode !=0:
+        print('Error occured')
+    else: 
+        print('Fai file generated: ', fasta_p + '.fai')
+        print('------------------') 
+        new_fai = fasta_p + '.fai'
+    
+    print('By using fai can now create a genome.sizes file that is required for fblank option')
+    gen_size = 'genome.size_now'
+    time.sleep(0.5)
+    print('A new file generated: ', gen_size)
+    time.sleep(0.5)
+    fai_to_gen = subprocess.run("awk '{{print $1\"\t\"$2}}' " + new_fai + " > " + gen_size, shell=True)
+    time.sleep(0.5)
+    if fai_to_gen.returncode !=0:
+        print('Error occured')
+    else: 
+        print('Proceeding to customizing genome.size_now for flankbed')
+        print('-------------------------')
+        time.sleep(0.5)
+    
+    gen_size_new = 'genome.size'
+
+    with open(gen_size, 'r') as infile, open(gen_size_new, 'w') as uotfile:
+        for line in infile:
+            new_line = line.strip()
+            if not new_line.startswith('chr'):
+                new_line = 'chr' + new_line
+                uotfile.write(new_line +'\n')
+
+    print('New file created: ', gen_size_new)
+
+    #remove genome.size without chr 
+    os.remove(gen_size)
+    print('Old file removed')
+    time.sleep(0.5)
+
+    #using flank to modify bed 
+    bed_file_new = args.mask.replace(".bed", "_flanked.bed")
+        
+    # Step 7: Read the input BED file and create a new BED file with midpoints
+    print('Reading input BED file and calculating midpoints')
+    print('------------------------------------------------------------')
+
+    columns_bed = ['chr', 'start', 'end', 'gene', 'score', 'strand', 'pos1', 'pos2']
+    df = pd.read_csv(args.mask, sep='\t', names=columns_bed, header=None)
+
+    # Calculate midpoints
+    df['midpoint'] = (df['start'] + df['end']) // 2
+
+    # Create a new DataFrame for the midpoint BED file
+    df_midpoints = df[['chr', 'midpoint', 'midpoint', 'gene', 'score', 'strand', 'pos1', 'pos2']]
+
+    # Save the midpoint BED file
+    midpoint_bed = 'midpoints.bed'
+    df_midpoints.to_csv(midpoint_bed, sep='\t', header=False, index=False)
+
+    print('Midpoint BED file created:', midpoint_bed)
+
+    # Step 8: Use flankBed to generate flanking intervals around the midpoints
+    print('Generating flanking intervals using flankBed')
+    flank_bed = bed_file_new  # The final BED file name as specified by the user
+
+    flank_command = f'flankBed -i {midpoint_bed} -g {gen_size_new} -b {args.window} > {flank_bed}'
+    bed_to_new = subprocess.run(flank_command, shell=True)
+    time.sleep(0.5)
+    if bed_to_new.returncode != 0:
+        print('Error occurred while running flankBed.')
+        exit(1)
+    else:
+        print('flankBed performed successfully.')
+        print('Flanking intervals BED file created:', flank_bed)
+        print('-----------------')
+        time.sleep(0.5)
+
+    # Step 9: Modify the BED file to contain both strands for divergent transcription analysis
+    print('Now modifying BED file further to contain both strands to identify divergent transcription')
+    print('---------------------------------------------------------------------------------------')
+
+    df = pd.read_csv(flank_bed, sep='\t', names=columns_bed, header=None)
+
+    # Create unique identifiers for each region
+    gene_counter = {}
+    def get_unique_id(gene):
+        if gene not in gene_counter:
+            gene_counter[gene] = 1
+        else:
+            gene_counter[gene] += 1
+        return f"{gene}_{gene_counter[gene]}"
+    df['gene'] = df['gene'].apply(get_unique_id)
+
+    df_plus = df.copy()
+    df_plus['strand'] = '+'
+
+    df_minus = df.copy()
+    df_minus['strand'] = '-'
+
+    df_strands = pd.concat([df_plus, df_minus])
+
+    df_strands.to_csv(flank_bed, sep='\t', header=False, index=False)
+    print('BED file now fully modified')
+    print('--------------------------------------------')
+    time.sleep(0.5)
+
+    # Step 10: Convert the BED file to GTF format for featureCounts
+    print('To perform featureCounts ' + flank_bed + ' needs to be converted to GTF file')
+    time.sleep(0.5)
+    print('Will create genepred file')
+    genepred = 'bed.genepred'
+    bed_to_genepred = subprocess.run(f'./bedToGenePred {flank_bed} {genepred}', shell=True)
+    if bed_to_genepred.returncode != 0:
+        print('Error occurred.')
+        exit(1)
+    else:
+        print('Created genepred file')
+        print('---------------------')
+        time.sleep(0.5)
+
+        
+    gtf_file_name = args.mask.replace(".bed", ".gtf")
+
+    genepred_to_gtf = subprocess.run(f'./genePredToGtf file {genepred} {gtf_file_name}', shell=True)
+    if genepred_to_gtf.returncode != 0:
+        print('Error occurred.')
+        exit(1)
+    else:
+        print('GTF file created for featureCounts')
+        print('----------------------------------')
+
+def featureCounts(args):
+    alignment_path = "Alignment"
+    if not os.path.isdir(alignment_path):
+        print('Alignment path not detected')
+        exit(1)
+    
+    print('Please provide path for bed file : /home/s2614505/Diss/my.gtf')
+    gtffile_path = input('Path: ')
+    if os.path.isfile(gtffile_path):
+        print('Path exists!')
+        print('Proceeding...')
+    else: 
+        print('Soemthing went wrong')
+    
+    print('Begining to perform featureCounts')
+    print('-----------------------------------')
+
+    feature = subprocess.run('featureCounts -s 2 -a ' + gtffile_path + ' -o counts.txt -T 10 -p ' + aligmnet_path + '/*bam', shell=True)
+    if feature.returncode !=0:
+        print('Error occured')
+    else:
+        print('Created counts.txt and counts.txt.summary')
+        print('-------------------')
+        time.sleep(0.5)
 
 
 def main():
@@ -295,6 +478,7 @@ def main():
     Unzip(args)
     Indexing(args)
     STAR_map(args)
+    Bed_file_making(args)
 
 if __name__ == '__main__':
     main()
