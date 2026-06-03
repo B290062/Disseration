@@ -474,6 +474,48 @@ def featureCounts(args):
             print('-------------------')
             time.sleep(0.5)
 
+def Final(args):
+    print('Creating bedgraph files for vizualization with IGV')
+    time.sleep(0.5)
+    print('------------------------------------------------')
+    counts_file = 'counts.txt'
+    df = pd.read_csv(counts_file, sep='\t', comment = '#')
+
+    #now need to separate counts by strands so can have two sep files for both strands  
+    df_counts_pos = df[df['Strand'] == '+']
+    df_counts_neg = df[df['Strand'] == '-']
+
+    # creating dataframe for + bedgraph 
+    df_bed_pos = pd.DataFrame()
+    df_bed_pos['chr'] = df_counts_pos['Chr']
+    df_bed_pos['start'] = df_counts_pos['Start'] -1 
+    df_bed_pos['end'] = df_counts_pos['End']
+    df_bed_pos['score'] = df_counts_pos.iloc[:, -1]
+
+    df_bed_pos.to_csv('pos_for_mid.bedgraph', sep='\t', header=False, index=False)
+    print('First bedgraph craeted: ', df_bed_pos)
+
+    #creating dataframe for - bedgraph 
+    df_bed_neg = pd.DataFrame()
+    df_bed_neg['chr'] = df_counts_neg['Chr']
+    df_bed_neg['start'] = df_counts_neg['Start'] -1 
+    df_bed_neg['end'] = df_counts_neg['End']
+    df_bed_neg['score'] = df_counts_neg.iloc[:, -1]
+
+    df_bed_neg.to_csv('neg_for_mid.bedgraph', sep='\t', header=False, index=False )
+    print('Second bedgraph created: ', df_bed_neg)
+
+    print('Bedgraph files are created')
+    print('--------------------------')
+    time.sleep(0.5)
+    print('Now you can proceed with R analysis')
+    time.sleep(0.5)
+    print('Using Analysis.Rmakdown script')
+    time.sleep(0.5)
+    print('Exiting now......')
+    time.sleep(0.5)
+    
+
 def main():
     args = parser.parse_args()
     SRA_download(args)
