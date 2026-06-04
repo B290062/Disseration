@@ -14,7 +14,7 @@ print("# For usage information please type --help in the command terminal#")
 print("################################################################### ")
 
 config = configparser.ConfigParser()
-config.read('config.ini')
+config.read("config.ini")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--sra", action="store", required=True, help="This is the SRA number from Gene Expression eg for GSE87821 it would be SRP091444)")
@@ -38,13 +38,14 @@ def SRA_download(args):
     os.makedirs("SRA", exist_ok=True)
     print('A Directory called SRA was created.')
     print('-----------------')
+    os.chdir("SRA")
     print('Attempting to download fastq files from GEO')
     print('----------------------------------------------------')
     #if statement adapted from https://www.geeksforgeeks.org/python/check-if-directory-contains-file-using-python/
     #this checks if the current directory "SRA" contains one or more files and skips the download process if true
     #essential as the SRA files for any given study are very large.
     #this could also be replaced with a download skip argument that runs main without the SRA, FASTA, and GTF download steps. implement later.
-    if len(os.listdir("SRA")) > 0:
+    if len(os.listdir(".")) > 0:
         print("SRA files were detected, inside the SRA directory, therefore the download will be skipped")
         os.chdir("..")
         return
@@ -63,6 +64,7 @@ def Quality_control(args):
     #produces FastQC files which allow the user to examine to determine the quality of the data.
     print('Beginning performing quality control...')
     print('---------------------------------')
+    
     time.sleep(0.5)
     print('Creating new directory for FASTQC files...')
     print('----------------------------------')
@@ -77,8 +79,11 @@ def Quality_control(args):
     print('Running FastQC....')
     time.sleep(0.5)
     print('---------------')
+    if len(os.listdir("FastQC")) > 0:
+        print("FastQC files detected in the folder, skipping this step")
+        return
     #runs fastqc on all the files in the SRA folder
-    fastqc_run = subprocess.run('fastqc * -o FastQC', shell=True)
+    fastqc_run = subprocess.run('fastqc SRA/*.fastq -o FastQC', shell=True)
     if fastqc_run.returncode !=0:
         print('FastQC were not able to be produced')
     else:
@@ -140,7 +145,7 @@ def STAR_files_fasta(args):
     #this function enables the download of the STAR FASTA genome files
     #checks if .gz files already exist in the directory to skip the download
     #this was adapted from the previous code from the unzip function.
-    gz_files = glob.glob('*.gz')
+    gz_files = glob.glob('*.fa')
     if len(gz_files) > 0:
         print("Fasta detected. skipping the download")
         return
