@@ -145,7 +145,8 @@ def STAR_files_fasta(args):
     #this function enables the download of the STAR FASTA genome files
     #checks if .gz files already exist in the directory to skip the download
     #this was adapted from the previous code from the unzip function.
-    gz_files = glob.glob('*.fa')
+    #May need to add the unzipped versions here also to check for those...
+    gz_files = glob.glob('*.fa.gz')
     if len(gz_files) > 0:
         print("Fasta detected. skipping the download")
         return
@@ -162,7 +163,7 @@ def STAR_files_fasta(args):
         
 def STAR_files_GTF(args):
     # function provides the annotation coordinates
-    gz_files = glob.glob('*.gz')
+    gz_files = glob.glob('*.gtf.gz')
     if len(gz_files) > 0:
         print("GFT files detected. skipping the download")
         return
