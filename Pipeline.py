@@ -180,6 +180,12 @@ def STAR_files_GTF(args):
 
 def Unzip(args):
     # STAR files and compressed when downloaded and therefore need to be unzipped. 
+    gz_files = glob.glob('*.gtf')
+    
+    if len(gz_files) > 0:
+        print("Unzipped file already detected, skipping.")
+        return
+    
     time.sleep(0.5)
     gz_files = glob.glob('*.gz')
     if not gz_files:
@@ -243,8 +249,13 @@ def STAR_map(args):
     #this function was especially cluttered in the previous code, the issue of the FASTQC file directory being a subdirectory of
     # SRA was fixed earlier so many of the inputs previously present here are not relevent
     #  also many of the inputs appeared irrelevent so they were re   
+    if os.path.exists('Alignment') and len(os.listdir("Alignment")) > 1:
+        print("Alignment has already been produced... Skipping.")
+        return
     os.makedirs("Alignment", exist_ok=True)
     print("Alignment directory was created.")
+
+  
     
     find_base = subprocess.run("find . -name 'SRR*' -print| sort | uniq", shell=True, capture_output= True, text=True)
     if find_base.returncode !=0:
