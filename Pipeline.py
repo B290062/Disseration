@@ -374,15 +374,20 @@ def Bed_file_making(args):
     # Step 7: Read the input BED file and create a new BED file with midpoints
     print('Reading input BED file and calculating midpoints')
     print('------------------------------------------------------------')
-
-    columns_bed = ['chr', 'start', 'end', 'gene', 'score', 'strand', 'pos1', 'pos2']
-    df = pd.read_csv(args.mask, sep='\t', names=columns_bed, header=None)
+    #the code here makes 8 columns but in the bed file there is only 5, needs updating to reflect this. Im using a different BED file with 5 columns.
+    columns_bed = ['Chromosome', 'Start', 'End', 'Geneid', 'Strand']
+    df = pd.read_csv(args.mask, sep='\t', names=columns_bed, header=0)
 
     # Calculate midpoints
-    df['midpoint'] = (df['start'] + df['end']) // 2
+    #there is a bug here, unsuppored operand types for str and int so types were converted
+    df["Start"] = df["Start"].astype(int)
+    df["End"] = df["End"].astype(int)
+    df['midpoint'] = (df['Start'] + df['End']) // 2
 
     # Create a new DataFrame for the midpoint BED file
-    df_midpoints = df[['chr', 'midpoint', 'midpoint', 'gene', 'score', 'strand', 'pos1', 'pos2']]
+    #I dont fully understand this, ask Simon to explain... 
+    #this function is bugged at the moment
+    df_midpoints = df[['Chromosome', 'midpoint', 'midpoint', 'Geneid', 'Strand']]
 
     # Save the midpoint BED file
     midpoint_bed = 'midpoints.bed'
