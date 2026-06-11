@@ -374,20 +374,23 @@ def Bed_file_making(args):
     # Step 7: Read the input BED file and create a new BED file with midpoints
     print('Reading input BED file and calculating midpoints')
     print('------------------------------------------------------------')
-    #the code here makes 8 columns but in the bed file there is only 5, needs updating to reflect this. Im using a different BED file with 5 columns.
-    columns_bed = ['Chromosome', 'Start', 'End', 'Geneid', 'Strand']
-    df = pd.read_csv(args.mask, sep='\t', names=columns_bed, header=0)
+    #bed 6 file format downloaded from UCSC
+    columns_bed = ['Chromosome', 'Start', 'End', 'Gene', 'Score', 'Strand']
+    df = pd.read_csv(args.mask, sep='\t', names=columns_bed, header=None)
+    #this code below makes a list of valid chromosomes that work with flankbed, it removed the errors of chrM not found and other chromosomes.
+    target_chromosomes = ["chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9",
+                          "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17",
+                          "chr18", "chr19", "chrX", "chrY" ]
+    df= df[df["Chromosome"].isin(target_chromosomes)]
 
     # Calculate midpoints
     #there is a bug here, unsuppored operand types for str and int so types were converted
-    df["Start"] = df["Start"].astype(int)
-    df["End"] = df["End"].astype(int)
     df['midpoint'] = (df['Start'] + df['End']) // 2
 
     # Create a new DataFrame for the midpoint BED file
     #I dont fully understand this, ask Simon to explain... 
     #this function is bugged at the moment
-    df_midpoints = df[['Chromosome', 'midpoint', 'midpoint', 'Geneid', 'Strand']]
+    df_midpoints = df[['Chromosome', 'midpoint', 'midpoint', 'Gene', 'Score' ,'Strand']]
 
     # Save the midpoint BED file
     midpoint_bed = 'midpoints.bed'
@@ -425,13 +428,13 @@ def Bed_file_making(args):
         else:
             gene_counter[gene] += 1
         return f"{gene}_{gene_counter[gene]}"
-    df['gene'] = df['gene'].apply(get_unique_id)
+    df['Gene'] = df['Gene'].apply(get_unique_id)
 
     df_plus = df.copy()
-    df_plus['strand'] = '+'
+    df_plus['Strand'] = '+'
 
     df_minus = df.copy()
-    df_minus['strand'] = '-'
+    df_minus['Strand'] = '-'
 
     df_strands = pd.concat([df_plus, df_minus])
 
