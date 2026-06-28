@@ -14,7 +14,7 @@ print("# For usage information please type --help in the command terminal#")
 print("################################################################### ")
 
 config = configparser.ConfigParser()
-config.read("config.ini")
+config.read("config2.ini")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--sra", action="store", required=True, help="This is the SRA number from Gene Expression eg for GSE87821 it would be SRP091444)")
@@ -293,7 +293,7 @@ def STAR_map(args):
     #if the mode is not RNA-Seq it must be GRO-Seq which, is single ended, therefore only Fq1 is needed.
     else:
         for name in sorted(names):
-            fq1 = os.path.join("SRA", name + "_pass_1.fastq")
+            fq1 = os.path.join("SRA", name + "_pass.fastq")
             aligned_read = os.path.join("Alignment", name)
             time.sleep(0.5)
             map = subprocess.run("STAR --runThreadN 10 --genomeDir " + "ref" +  " --readFilesIn " + fq1 + "  --outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --outFileNamePrefix " + aligned_read + "_", shell=True)
