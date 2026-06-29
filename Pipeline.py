@@ -482,7 +482,7 @@ def featureCounts(args):
     print('Beginning to perform featureCounts')
     print('-----------------------------------')
     if args.mode == "rnaseq":
-        feature = subprocess.run('featureCounts -s 2 -a ' + gtf_file_name + ' -o counts.txt -T 10 -p ' + alignment_path + '/*bam', shell=True)
+        feature = subprocess.run('featureCounts -s 2 -a ' + gtf_file_name + ' -o counts.txt -T 10 -p ' + alignment_path + '/*.bam', shell=True)
         if feature.returncode !=0:
             print('Error occured')
             exit(1)
@@ -492,7 +492,7 @@ def featureCounts(args):
             time.sleep(0.5)
     #Feature counts has the -p flag which corresponds to counting paired end data, this is removed for the Gro-seq as its single ended
     else:
-        feature = subprocess.run('featureCounts -s 2 -a ' + gtf_file_name + ' -o counts.txt -T 10 ' + alignment_path + '/*bam', shell=True)
+        feature = subprocess.run('featureCounts -s 2 -a ' + gtf_file_name + ' -o counts.txt -T 10 ' + alignment_path + '/*.bam', shell=True)
         if feature.returncode !=0:
             print('Error occured')
             exit(1)
