@@ -14,7 +14,7 @@ print("# For usage information please type --help in the command terminal#")
 print("################################################################### ")
 
 config = configparser.ConfigParser()
-config.read("config.ini")
+config.read("config2.ini")
 
 #The following are command line arguments that can be specified in the console by the user, each of which denotes its use.
 parser = argparse.ArgumentParser()
@@ -86,7 +86,16 @@ def Trimming(args):
     if args.trim is False:
         print('Proceeding without trimming...')
         return
-    
+    #with mode gro-seq this code checks if one adapter was specified by the user, if not the code exits.
+    #note - if the user enters two adapters with gro-seq, no error will occur but only the first adapter will be used.
+    if args.trim is True and args.mode =="groseq" and args.adapter1 is None:
+        print("Please provide an adapter for trimming")
+        exit(1)
+    #with mode rna-seq two adapters are needed so the code checks that both have been inputted, if not it exits.
+    if args.trim is True and args.mode =="rnaseq" and (args.adapter1 is None or args.adapter2 is None):
+        print("Please provide both adapters for trimming")
+        exit(1)
+
     if args.trim is True:
         os.makedirs("Trimmed_data", exist_ok=True)
         if not os.path.exists('SRA'):
