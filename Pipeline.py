@@ -31,6 +31,7 @@ parser.add_argument("--gtf",required = False, default=config["dir"]["gtf"] , hel
 parser.add_argument("--mode", choices= ["rnaseq", "groseq"], required = True, help= "The type of data the user wants to analyse, either " \
 "RNA-Seq or GRO-seq data")
 parser.add_argument("--mask", required = True, help="This is the BED file that has coordinates of the region of interest e.g promoters, enhancers.")
+#--window works as the bed file (mm39_refseq.bed) was downloaded as upstream by one base, so the window can be configured by the user as desired.
 parser.add_argument("--window", type= int, default = 500, help="Number of bases flanking the promoter/enchancer region")
 
 def SRA_download(args): 
@@ -54,14 +55,12 @@ def SRA_download(args):
         exit(1)
     else: 
         print('Fastq file download successful, storing in the SRA directory.')
-        time.sleep(0.5)
         #leaves the SRA directory backs into the main directory.
         os.chdir("..")
 
 def Quality_control(args):
     #produces FastQC files which allow the user to examine to determine the quality of the data.
     print('Beginning performing quality control...')
-    time.sleep(0.5)
     os.makedirs("FastQC", exist_ok = True)
     print("FastQC directory created")
     #this code appears in all of the functions and allows for time to be saved, if files are detected.
@@ -76,7 +75,6 @@ def Quality_control(args):
         exit(1)
     else:
         print('Finished FastQC analysis')
-        time.sleep(0.5)
         print('All the files are in the fastqc directory')
 
 def Trimming(args):
@@ -127,116 +125,103 @@ def Trimming(args):
                     #the cutadapt command is shortened for gro-seq as it only requires one input, output and adapter. The -A for second adapter
                     # and -p "paired" flags are removed.
                     cutadapt = subprocess.run('cutadapt -a ' + args.adapter1 + ' -o ' + output_file + ' ' + input_file , shell=True)
-
-
                         
 def Multiqc(args):
     #this method takes all of the FastQC files and combines them into a MultiQC for easier interpretation
+
+    #if argument not specified, it returns and doesn't run
     if args.multiqc is False:
         print('MultiQC was not performed')
         return
+    #if argument is specified, it runs and results are put into multiqc folder
     if args.multiqc is True:
         print('Performing MultiQC....')
-        time.sleep(0.5)
-        print('--------------------------')
         multiqc_run = subprocess.run('multiqc .', shell = True)
         if multiqc_run.returncode !=0:
             print('Error occured while running MultiQC')
             exit(1)
         else:
-            print('-----------------------------')
-            print('Finished MultiQC')
-            time.sleep(0.5)
-            print('MultiQC directory was produced containing the results')
-            time.sleep(0.5)
-            print('---------------------------')                    
+            print('MultiQC directory was produced containing the results')                  
 
 def STAR_files_fasta(args):
     #this function enables the download of the STAR FASTA genome files
     #checks if .gz files already exist in the directory to skip the download
     #this was adapted from the previous code from the unzip function.
-    #May need to add the unzipped versions here also to check for those...
     gz_files = glob.glob('*.fa.gz')
     if len(gz_files) > 0:
         print("Fasta detected. skipping the download")
         return
+    #downloads the fasta file based on the link specified in the config file
     print(f'Downloading assembly {config["urls"]["fasta_url"]}')
-    print('--------------------------')
-    fatsa_download = subprocess.run('wget ' +  config['urls']["fasta_url"], shell = True)
-    if fatsa_download.returncode !=0:
+    fasta_download = subprocess.run('wget ' +  config['urls']["fasta_url"], shell = True)
+    if fasta_download.returncode !=0:
         print('Error occured while attempting to download FASTA file...')
         exit(1)
     else:
         print('FASTA download successful')
-        print('-----------------------------')
-        time.sleep(0.5)
-        
+                
 def STAR_files_GTF(args):
     # function provides the annotation coordinates
+
+    #skips download if the gtf files are already downloaded.
     gz_files = glob.glob('*.gtf.gz')
     if len(gz_files) > 0:
         print("GFT files detected. skipping the download")
         return
+    #downloads gtf based on the link that is specified in the config file
     print(f'Downloading GTF {config["urls"]["gtf_url"]}')
-    print('--------------------------')
     GTF_download = subprocess.run(' wget ' + config["urls"]["gtf_url"], shell = True)
     if GTF_download.returncode !=0:
         print('Error occured while attempting to download GTF file...')
         exit(1)
     else: 
         print('GTF download successful')
-        print('-----------------------------')
-        time.sleep(0.5)
-
+        
 def Unzip(args):
     # STAR files and compressed when downloaded and therefore need to be unzipped. 
-    gz_files = glob.glob('*.gtf')
+
+    #these variables are used to check if unzipped files are present allowing this step to be skipped.
+    gtf_files = glob.glob('*.gtf')
+    fa_files = glob.glob('*.fa')
     
-    if len(gz_files) > 0:
+    #skip if uncompressed file are detected
+    if len(gtf_files) > 0 and len(fa_files) > 0:
         print("Unzipped file already detected, skipping.")
         return
-    
-    time.sleep(0.5)
+    #the downloaded fasta and gtf files end with .gz and if they arent present unzipping cannot occur
     gz_files = glob.glob('*.gz')
     if not gz_files:
-        print('Unzipping of STAR files failed, please try again.')
+        print('No files detected to unzip.')
         exit(1)
     else:
         print('Begin to unzip files')
-        print('--------------------')
+        #unzips the files ending with .gz
         unzip = subprocess.run(['gunzip'] + gz_files)
         if unzip.returncode !=0:
             print('The zipped files were unable to be unzipped.')
             exit(1)
         else:
             print('Both files unzipped')
-            print('-------------------')
-            time.sleep(0.5)
-            files = os.listdir('.')
-            print('Files in the current directory:')
-            print('-------------------------------')
-            for file in files:
-                print(file)
-
+            
 def Indexing(args):
     print('Index is being built')
-    time.sleep(0.5)
+    #this is the path to the fasta file, if the file is already downloaded if can be specified in the command line.
+    #the default path has been set up for this project 
     if os.path.isfile(args.fasta):
         print('The file exists', args.fasta)
-        time.sleep(0.5)
         
     else: 
         print('Fasta file not found')
         exit(1)
-    
+    #the same applies for args.gtf.
     if os.path.isfile(args.gtf):
         print('The file exists', args.gtf)
-        time.sleep(0.5)
         
     else:
         print('GTF file not found, please try again')
         exit(1)
     
+    #skip indexing if files are detected in the ref folder.
     if os.path.exists('ref') and len(os.listdir("ref")) > 1:
         print("the index is already present so STAR is skipped")
         return
@@ -247,34 +232,34 @@ def Indexing(args):
         print('Index error occured')
         exit(1)
     else:
-        print('Indexing done!')
-        print('---------------')
-        time.sleep(0.5)    
+        print('Indexing done!')   
 
 def STAR_map(args):
      #main adaptation of this function involves mapping GRO-seq data too, I investigated how other pipelines do this
     # The difference in processing is that GRO-seq is single end sequencing while RNA-Seq is paired end.
     # https://github.com/Danko-Lab/proseq2.0/blob/master/proseq2.0.bsh
-    print('The next step is to perform mapping')
+    print('performing alignment')
     #this function was especially cluttered in the previous code, the issue of the FASTQC file directory being a subdirectory of
     # SRA was fixed earlier so many of the inputs previously present here are not relevent
-    #  also many of the inputs appeared irrelevent so they were re   
+    #  also many of the inputs appeared irrelevent so they were removed.
+
+    #checks if alignment has already be done and skips if so.   
     if os.path.exists('Alignment') and len(os.listdir("Alignment")) > 1:
         print("Alignment has already been produced... Skipping.")
         return
     os.makedirs("Alignment", exist_ok=True)
     print("Alignment directory was created.")
-
-  
-    
-    find_base = subprocess.run("find . -name 'SRR*' -print| sort | uniq", shell=True, capture_output= True, text=True)
+    #if the data was trimmed the directory is set to trimmed data to use this data in the alignment
+    if args.trim == True:
+        search_directory = "./Trimmed_data"
+    #otherwise it will use the SRA data
+    else:
+        search_directory = "./SRA"
+    find_base = subprocess.run(f"find {search_directory} -name 'SRR*' -print| sort | uniq", shell=True, capture_output= True, text=True)
     if find_base.returncode !=0:
         print('Error occured')
     else:
-        time.sleep(0.5)
-        print('-----------------')
         print('Reads found:')
-        time.sleep(0.5)
         names = set()
         for line in find_base.stdout.splitlines():
             name = line.strip().split('/')[-1]
@@ -282,15 +267,14 @@ def STAR_map(args):
             names.add(name)
         for name in sorted(names):
             print(name)
-    time.sleep(0.7)
     print('Beginning aligment')
-    print('-----------------')
+    
 
     #defining bases
     if args.mode == "rnaseq":
         for name in sorted(names):
-            fq1 = os.path.join('SRA', name + '_pass_1.fastq')
-            fq2 = os.path.join('SRA', name + '_pass_2.fastq')
+            fq1 = os.path.join(search_directory, name + '_pass_1.fastq')
+            fq2 = os.path.join(search_directory, name + '_pass_2.fastq')
             aligned_read = os.path.join("Alignment", name)
             time.sleep(0.5)
             map = subprocess.run("STAR --runThreadN 10 --genomeDir " + "ref" +  " --readFilesIn " + fq1 + " " + fq2 + " " "--outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --outFileNamePrefix " + aligned_read + "_", shell=True)
@@ -303,7 +287,7 @@ def STAR_map(args):
     #if the mode is not RNA-Seq it must be GRO-Seq which, is single ended, therefore only Fq1 is needed.
     else:
         for name in sorted(names):
-            fq1 = os.path.join("SRA", name + "_pass.fastq")
+            fq1 = os.path.join(search_directory, name + "_pass.fastq")
             aligned_read = os.path.join("Alignment", name)
             time.sleep(0.5)
             map = subprocess.run("STAR --runThreadN 10 --genomeDir " + "ref" +  " --readFilesIn " + fq1 + "  --outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --outFileNamePrefix " + aligned_read + "_", shell=True)
