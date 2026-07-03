@@ -14,7 +14,7 @@ print("# For usage information please type --help in the command terminal#")
 print("################################################################### ")
 
 config = configparser.ConfigParser()
-config.read("config2.ini")
+config.read("config.ini")
 
 #The following are command line arguments that can be specified in the console by the user, each of which denotes its use.
 parser = argparse.ArgumentParser()
@@ -485,8 +485,6 @@ def featureCounts(args):
         else:
             print('Created counts.txt and counts.txt.summary')
         
-           
-
 def Final(args):
     print('Creating bedgraph files for vizualization with IGV')
     counts_file = 'counts.txt'
