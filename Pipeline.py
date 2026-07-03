@@ -247,7 +247,7 @@ def STAR_map(args):
      #main adaptation of this function involves mapping GRO-seq data too, I investigated how other pipelines do this
     # The difference in processing is that GRO-seq is single end sequencing while RNA-Seq is paired end.
     # https://github.com/Danko-Lab/proseq2.0/blob/master/proseq2.0.bsh
-    print('performing alignment')
+    print('Performing alignment')
     #this function was especially cluttered in the previous code, the issue of the FASTQC file directory being a subdirectory of
     # SRA was fixed earlier so many of the inputs previously present here are not relevent
     #  also many of the inputs appeared irrelevent so they were removed.
@@ -264,28 +264,29 @@ def STAR_map(args):
     #otherwise it will use the SRA data
     else:
         search_directory = "./SRA"
+    #creates a list of all the SRA files and sorts them in the variable find_base
     find_base = subprocess.run(f"find {search_directory} -name 'SRR*' -print| sort | uniq", shell=True, capture_output= True, text=True)
     if find_base.returncode !=0:
         print('Error occured')
     else:
         print('Reads found:')
         names = set()
+        #this process extracts only the SRA name from the filepath and the _pass
         for line in find_base.stdout.splitlines():
+            #splits on the file path
             name = line.strip().split('/')[-1]
+            #splits on the _ to remove the _pass.fastq
             name = name.split('_')[0]
             names.add(name)
         for name in sorted(names):
             print(name)
-    print('Beginning aligment')
-    
 
-    #defining bases
     if args.mode == "rnaseq":
         for name in sorted(names):
+            #adds the passes back onto the the SRA names to allow them to be distinguished from eachother in the mapping
             fq1 = os.path.join(search_directory, name + '_pass_1.fastq')
             fq2 = os.path.join(search_directory, name + '_pass_2.fastq')
             aligned_read = os.path.join("Alignment", name)
-            time.sleep(0.5)
             map = subprocess.run("STAR --runThreadN 10 --genomeDir " + "ref" +  " --readFilesIn " + fq1 + " " + fq2 + " " "--outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --outFileNamePrefix " + aligned_read + "_", shell=True)
             if map.returncode !=0: 
                 print('Error occured during mapping')
@@ -298,7 +299,6 @@ def STAR_map(args):
         for name in sorted(names):
             fq1 = os.path.join(search_directory, name + "_pass.fastq")
             aligned_read = os.path.join("Alignment", name)
-            time.sleep(0.5)
             map = subprocess.run("STAR --runThreadN 10 --genomeDir " + "ref" +  " --readFilesIn " + fq1 + "  --outSAMtype BAM SortedByCoordinate --quantMode GeneCounts --outFileNamePrefix " + aligned_read + "_", shell=True)
             if map.returncode !=0: 
                 print('Error occured during mapping')
@@ -307,56 +307,52 @@ def STAR_map(args):
                 print('Finished mapping')  
             
 def Bed_file_making(args):
-    #this is the bed file, that is used as coordinates
+    #the final output of bed file modification is the bed file in gtf format used in featurecounts
+    #therefore the pipeline can check if this exists and skip this step.
+    gtf_file_check = args.mask.replace(".bed", ".gtf")
+    if os.path.isfile(gtf_file_check):
+        print(f'{gtf_file_check} Already exists, skipping the BED file modification')
+        return
+
     if os.path.isfile(args.mask):
         print('File found: ', args.mask)
     else:
-        print('File not found')
-        time.sleep(0.5)
-        print('Please try again')
+        print('BED file not found')
         exit(1)
     
     print('To modify bed file for further analysis, flankbed tool will be used')
-    time.sleep(0.5)
     print('Need to generate genome.sizes from fasta file')
-    time.sleep(0.5)
     fasta_p = args.fasta
     if os.path.isfile(fasta_p):
         print('The file exists', fasta_p)
-        print('------------------------')
-        time.sleep(0.5)
     else: 
         print('File not found, please try again')
         exit(1)
     
-    print('Modifying BED file for further analyis')
-    print('--------------------------------------')
-    time.sleep(0.5)
+    print('Modifying BED file for further analysis')
+    #this line converts the FASTA format to fai, essentially it extracts the info that was generated with the FASTA file
+    # it is used to get precise file coordinates. https://pmc.ncbi.nlm.nih.gov/articles/PMC8558547/
     fasta_to_fai = subprocess.run('samtools faidx ' + fasta_p, shell=True)
-    time.sleep(0.5)
     if fasta_to_fai.returncode !=0:
         print('Error occured')
     else: 
         print('Fai file generated: ', fasta_p + '.fai')
-        print('------------------') 
         new_fai = fasta_p + '.fai'
     
     print('By using fai can now create a genome.sizes file that is required for fblank option')
     gen_size = 'genome.size_now'
-    time.sleep(0.5)
     print('A new file generated: ', gen_size)
-    time.sleep(0.5)
+    #takes only the necessary columns from the fai file it has 5 columns but it filters to keep the chromosome and the length.
     fai_to_gen = subprocess.run("awk '{{print $1\"\t\"$2}}' " + new_fai + " > " + gen_size, shell=True)
-    time.sleep(0.5)
     if fai_to_gen.returncode !=0:
         print('Error occured')
     else: 
         print('Proceeding to customizing genome.size_now for flankbed')
-        print('-------------------------')
-        time.sleep(0.5)
     
+    #genomesize contains only the chromosome and the length
     gen_size_new = 'genome.size'
 
+    #this loop puts the chr prefix infront of the chromosome numbers in the genomesize file
     with open(gen_size, 'r') as infile, open(gen_size_new, 'w') as uotfile:
         for line in infile:
             new_line = line.strip()
@@ -369,15 +365,13 @@ def Bed_file_making(args):
     #remove genome.size without chr 
     os.remove(gen_size)
     print('Old file removed')
-    time.sleep(0.5)
 
     #using flank to modify bed 
     bed_file_new = args.mask.replace(".bed", "_flanked.bed")
         
     # Step 7: Read the input BED file and create a new BED file with midpoints
     print('Reading input BED file and calculating midpoints')
-    print('------------------------------------------------------------')
-    #bed 6 file format downloaded from UCSC
+    #bed6 file format downloaded from UCSC
     columns_bed = ['Chromosome', 'Start', 'End', 'Gene', 'Score', 'Strand']
     df = pd.read_csv(args.mask, sep='\t', names=columns_bed, header=None)
     #this code below makes a list of valid chromosomes that work with flankbed, it removed the errors of chrM not found and other chromosomes.
@@ -387,12 +381,9 @@ def Bed_file_making(args):
     df= df[df["Chromosome"].isin(target_chromosomes)]
 
     # Calculate midpoints
-    #there is a bug here, unsuppored operand types for str and int so types were converted
     df['midpoint'] = (df['Start'] + df['End']) // 2
 
     # Create a new DataFrame for the midpoint BED file
-    #I dont fully understand this, ask Simon to explain... 
-    #this function is bugged at the moment
     df_midpoints = df[['Chromosome', 'midpoint', 'midpoint', 'Gene', 'Score' ,'Strand']]
 
     # Save the midpoint BED file
@@ -405,21 +396,20 @@ def Bed_file_making(args):
     print('Generating flanking intervals using flankBed')
     flank_bed = bed_file_new  # The final BED file name as specified by the user
 
+    #use the window argument to extend the midpoints by the specified window
     flank_command = f'flankBed -i {midpoint_bed} -g {gen_size_new} -b {args.window} > {flank_bed}'
     bed_to_new = subprocess.run(flank_command, shell=True)
-    time.sleep(0.5)
+    
     if bed_to_new.returncode != 0:
         print('Error occurred while running flankBed.')
         exit(1)
     else:
         print('flankBed performed successfully.')
         print('Flanking intervals BED file created:', flank_bed)
-        print('-----------------')
-        time.sleep(0.5)
+
 
     # Step 9: Modify the BED file to contain both strands for divergent transcription analysis
     print('Now modifying BED file further to contain both strands to identify divergent transcription')
-    print('---------------------------------------------------------------------------------------')
 
     df = pd.read_csv(flank_bed, sep='\t', names=columns_bed, header=None)
 
@@ -443,12 +433,9 @@ def Bed_file_making(args):
 
     df_strands.to_csv(flank_bed, sep='\t', header=False, index=False)
     print('BED file now fully modified')
-    print('--------------------------------------------')
-    time.sleep(0.5)
-
+    
     # Step 10: Convert the BED file to GTF format for featureCounts
     print('To perform featureCounts ' + flank_bed + ' needs to be converted to GTF file')
-    time.sleep(0.5)
     print('Will create genepred file')
     genepred = 'bed.genepred'
     bed_to_genepred = subprocess.run(f'./bedToGenePred {flank_bed} {genepred}', shell=True)
@@ -457,8 +444,7 @@ def Bed_file_making(args):
         exit(1)
     else:
         print('Created genepred file')
-        print('---------------------')
-        time.sleep(0.5)
+    
 
         
     gtf_file_name = args.mask.replace(".bed", ".gtf")
@@ -469,7 +455,6 @@ def Bed_file_making(args):
         exit(1)
     else:
         print('GTF file created for featureCounts')
-        print('----------------------------------')
 
 def featureCounts(args):
     alignment_path = "Alignment"
@@ -483,7 +468,6 @@ def featureCounts(args):
         exit(1)
     
     print('Beginning to perform featureCounts')
-    print('-----------------------------------')
     if args.mode == "rnaseq":
         feature = subprocess.run('featureCounts -s 2 -a ' + gtf_file_name + ' -o counts.txt -T 10 -p ' + alignment_path + '/*.bam', shell=True)
         if feature.returncode !=0:
@@ -491,8 +475,7 @@ def featureCounts(args):
             exit(1)
         else:
             print('Created counts.txt and counts.txt.summary')
-            print('-------------------')
-            time.sleep(0.5)
+
     #Feature counts has the -p flag which corresponds to counting paired end data, this is removed for the Gro-seq as its single ended
     else:
         feature = subprocess.run('featureCounts -s 2 -a ' + gtf_file_name + ' -o counts.txt -T 10 ' + alignment_path + '/*.bam', shell=True)
@@ -501,13 +484,11 @@ def featureCounts(args):
             exit(1)
         else:
             print('Created counts.txt and counts.txt.summary')
-            print('-------------------')
-            time.sleep(0.5)
+        
+           
 
 def Final(args):
     print('Creating bedgraph files for vizualization with IGV')
-    time.sleep(0.5)
-    print('------------------------------------------------')
     counts_file = 'counts.txt'
     df = pd.read_csv(counts_file, sep='\t', comment = '#')
 
@@ -536,14 +517,9 @@ def Final(args):
     print('Second bedgraph created: ', df_bed_neg)
 
     print('Bedgraph files are created')
-    print('--------------------------')
-    time.sleep(0.5)
     print('Now you can proceed with R analysis')
-    time.sleep(0.5)
-    print('Using Analysis.Rmakdown script')
-    time.sleep(0.5)
     print('Exiting now......')
-    time.sleep(0.5)
+    
     
 
 def main():
