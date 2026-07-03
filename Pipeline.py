@@ -107,10 +107,14 @@ def Trimming(args):
                 if file.endswith("_pass_1.fastq"):
                     #the path of the SRA, folder and the file are joined together. E.G /home/diss/SRA + SRR441391_pass_1.fastq
                     input_file = os.path.join('SRA', file)
+                    #this replaces the SRA file with the complimentory SRA file with _pass_2
                     input_file_2 = os.path.join('SRA', file.replace('_pass_1.fastq', '_pass_2.fastq'))
-                    output_file = os.path.join('Trimmed_data', file.replace('_pass_1.fastq', '_pass_2_trimmed.fastq'))
-                    output_file_2 = os.path.join('Trimmed_data', file.replace('_pass_1.fastq', '_pass_2_trimmed.fastq'))
+                    # The output file names originally had _trimmed in the name, but as they go into the /Trimmed_data folder
+                    # this was removed, as it map the star map function work correctly with trimming.
+                    output_file = os.path.join('Trimmed_data', file)
+                    output_file_2 = os.path.join('Trimmed_data', file.replace('_pass_1.fastq', '_pass_2.fastq'))
 
+                    #cutadapt command that takes the two inputs and adapters and performs trimming
                     cutadapt = subprocess.run('cutadapt -a ' + args.adapter1 + ' -A ' + args.adapter2 + ' -o ' + output_file + ' -p ' + output_file_2 + '' + input_file + '' + input_file_2, shell=True)
                     if cutadapt.returncode !=0:
                         print('Error occured')
@@ -121,10 +125,15 @@ def Trimming(args):
             for file in os.listdir("SRA"):
                 if file.endswith("_pass.fastq"):
                     input_file = os.path.join('SRA', file)
-                    output_file = os.path.join('Trimmed_data', file.replace('_pass.fastq', '_pass_trimmed.fastq'))
+                    output_file = os.path.join('Trimmed_data', file)
                     #the cutadapt command is shortened for gro-seq as it only requires one input, output and adapter. The -A for second adapter
                     # and -p "paired" flags are removed.
                     cutadapt = subprocess.run('cutadapt -a ' + args.adapter1 + ' -o ' + output_file + ' ' + input_file , shell=True)
+                    if cutadapt.returncode !=0:
+                        print('Error occured')
+                        exit(1)
+                    else: 
+                        print('The trimming is now done..')
                         
 def Multiqc(args):
     #this method takes all of the FastQC files and combines them into a MultiQC for easier interpretation
