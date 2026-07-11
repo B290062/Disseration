@@ -2,9 +2,7 @@ import argparse
 import subprocess
 import os 
 import time
-import zipfile
 import glob 
-import shutil
 import pandas  as pd 
 import configparser
 
