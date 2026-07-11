@@ -5,7 +5,7 @@ import time
 import zipfile
 import glob 
 import shutil
-import pandas as pd 
+import pandas  as pd 
 import configparser
 
 print("################################################################### ")
@@ -17,6 +17,7 @@ config = configparser.ConfigParser()
 config.read("config.ini")
 
 #The following are command line arguments that can be specified in the console by the user, each of which denotes its use.
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--sra", action="store", required=True, help="This is the SRA number from Gene Expression eg for GSE87821 it would be SRP091444)")
 #store_true used for optional values, when the value is present it will be True so this can be used to write functions.
@@ -33,6 +34,8 @@ parser.add_argument("--mode", choices= ["rnaseq", "groseq"], required = True, he
 parser.add_argument("--mask", required = True, help="This is the BED file that has coordinates of the region of interest e.g promoters, enhancers.")
 #--window works as the bed file (mm39_refseq.bed) was downloaded as upstream by one base, so the window can be configured by the user as desired.
 parser.add_argument("--window", type= int, default = 500, help="Number of bases flanking the promoter/enchancer region")
+
+
 
 def SRA_download(args): 
     #replaced with makedirs instead of os.mkdirs as it has the exist_ok function which prevents crashing
@@ -358,7 +361,7 @@ def Bed_file_making(args):
             new_line = line.strip()
             if not new_line.startswith('chr'):
                 new_line = 'chr' + new_line
-                uotfile.write(new_line +'\n')
+            uotfile.write(new_line +'\n')
 
     print('New file created: ', gen_size_new)
 
@@ -518,10 +521,14 @@ def Final(args):
     print('Now you can proceed with R analysis')
     print('Exiting now......')
     
-    
-
 def main():
     args = parser.parse_args()
+    
+    #added this when testing the code with test_pytest.py, as the window cannot be negative.
+    if args.window < 0:
+    print("Window cannot be negative")
+    exit(1)
+
     SRA_download(args)
     Quality_control(args)
     Trimming(args)
