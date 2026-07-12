@@ -1,7 +1,6 @@
 library(biomaRt)
 library(dplyr)
 library(data.table)
-library(dplyr)
 library(tidyverse)
 library(DESeq2)
 library(pheatmap)
