@@ -482,7 +482,7 @@ overlapping_one_genes <- intersect(genes_one_venn_BRG1, genes_one_venn_OCT4)
   lwd = 2,  # Line width of circles
   lty = 'dashed',  # Line type of circles
   col = c("darkgreen", "darkred"),  # Outline colors
-  main = "Divergent pairs where both regions are significantly expressed",
+  main = "Divergent pairs where both regions are significantly changed",
   main.cex = 2,  # Main title size
   main.fontface = "bold",
   main.fontfamily = "sans"
@@ -669,7 +669,7 @@ overlapping_one_genes <- intersect(genes_one_venn_BRG1, genes_one_venn_OCT4)
    lwd = 2,  # Line width of circles
    lty = 'dashed',  # Line type of circles
    col = c("#D81B60", "#1E88E5"),  # Outline colors
-   main = "Divergent pairs where both regions are significantly expressed",
+   main = "Divergent expression in RNA-seq Vs Gro-seq ",
    main.cex = 2,  # Main title size
    main.fontface = "bold",
    main.fontfamily = "sans",
