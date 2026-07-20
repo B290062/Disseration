@@ -495,7 +495,7 @@ def Final(args):
     df_bed_pos['chr'] = df_counts_pos['Chr']
     df_bed_pos['start'] = df_counts_pos['Start'] -1 
     df_bed_pos['end'] = df_counts_pos['End']
-    df_bed_pos['score'] = df_counts_pos.iloc[:, -1]
+    df_bed_pos["score"] = df_counts_pos.iloc[:, 6:].mean(axis=1)
 
     df_bed_pos.to_csv('pos_for_mid.bedgraph', sep='\t', header=False, index=False)
     print('First bedgraph craeted: ', df_bed_pos)
@@ -505,7 +505,7 @@ def Final(args):
     df_bed_neg['chr'] = df_counts_neg['Chr']
     df_bed_neg['start'] = df_counts_neg['Start'] -1 
     df_bed_neg['end'] = df_counts_neg['End']
-    df_bed_neg['score'] = df_counts_neg.iloc[:, -1]
+    df_bed_neg["score"] = -df_counts_neg.iloc[:, 6:].mean(axis=1)
 
     df_bed_neg.to_csv('neg_for_mid.bedgraph', sep='\t', header=False, index=False )
     print('Second bedgraph created: ', df_bed_neg)
