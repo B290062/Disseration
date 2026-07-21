@@ -12,7 +12,7 @@ print("# For usage information please type --help in the command terminal#")
 print("################################################################### ")
 
 config = configparser.ConfigParser()
-config.read("config.ini")
+config.read("config3.ini")
 
 #The following are command line arguments that can be specified in the console by the user, each of which denotes its use.
 parser = argparse.ArgumentParser()
@@ -421,13 +421,20 @@ def Bed_file_making(args):
         return f"{gene}_{gene_counter[gene]}"
     df['Gene'] = df['Gene'].apply(get_unique_id)
 
+    #for feature counts to work on the stranded data you need to label the strands however retain the true strand information for divergent analysis
+    df["true_strand"] = df ["Strand"]
+    
     df_plus = df.copy()
     df_plus['Strand'] = '+'
+    #map the true strand information onto the copies, before running feature counts to track the direction
+    df_plus["Gene"] = df_plus["Gene"] + df_plus["true_strand"].map({"+": "_sense", "-": "_antisense"})
 
     df_minus = df.copy()
     df_minus['Strand'] = '-'
-
-    df_strands = pd.concat([df_plus, df_minus])
+    #same here
+    df_minus["Gene"] = df_minus["Gene"] + df_minus["true_strand"].map({"-": "_sense", "+": "_antisense"})
+    #once the true strand label has been added to the suffix, you can drop the column
+    df_strands = pd.concat([df_plus, df_minus]).drop(columns = ["true_strand"])
 
     df_strands.to_csv(flank_bed, sep='\t', header=False, index=False)
     print('BED file now fully modified')
