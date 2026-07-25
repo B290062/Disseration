@@ -12,11 +12,13 @@ print("# For usage information please type --help in the command terminal#")
 print("################################################################### ")
 
 config = configparser.ConfigParser()
-config.read("config3.ini")
+config.read("config.ini")
+
 
 #The following are command line arguments that can be specified in the console by the user, each of which denotes its use.
 parser = argparse.ArgumentParser()
-parser.add_argument("--sra", action="store", required=True, help="This is the SRA number from Gene Expression eg for GSE87821 it would be SRP091444)")
+
+parser.add_argument("--sra", action="store", required=False, help="This is the SRA number from Gene Expression eg for GSE87821 it would be SRP091444)")
 #store_true used for optional values, when the value is present it will be True so this can be used to write functions.
 #https://docs.python.org/3/library/argparse.html#action
 parser.add_argument("--trim", action="store_true", required=False, help = "The data can be optionally trimmed if the user requires")
@@ -26,11 +28,12 @@ parser.add_argument("--multiqc", action="store_true", required=False, help = "Th
 #Function to download fastq files from SRA 
 parser.add_argument("--fasta", required = False, default =config["dir"]["fasta"], help = "This is the file path for the fasta file")
 parser.add_argument("--gtf",required = False, default=config["dir"]["gtf"] , help = "This is the file path for the gtf file")
-parser.add_argument("--mode", choices= ["rnaseq", "groseq"], required = True, help= "The type of data the user wants to analyse, either " \
+parser.add_argument("--mode", choices= ["rnaseq", "groseq"], required = False, help= "The type of data the user wants to analyse, either " \
 "RNA-Seq or GRO-seq data")
-parser.add_argument("--mask", required = True, help="This is the BED file that has coordinates of the region of interest e.g promoters, enhancers.")
+parser.add_argument("--mask", required = False, help="This is the BED file that has coordinates of the region of interest e.g promoters, enhancers.")
 #--window works as the bed file (mm39_refseq.bed) was downloaded as upstream by one base, so the window can be configured by the user as desired.
 parser.add_argument("--window", type= int, default = 500, help="Number of bases flanking the promoter/enchancer region")
+parser.add_argument("--test", choices =['quick', 'full'],required =False, help="Run pipeline testing quick validates the CLI while full runs the complete pipeline")
 
 def SRA_download(args): 
     #replaced with makedirs instead of os.mkdirs as it has the exist_ok function which prevents crashing
@@ -523,12 +526,33 @@ def Final(args):
     
 def main():
     args = parser.parse_args()
+
+    #modes for running pytesting on the file
+    if args.test == "quick":
+        print("Running quick CLI testing")
+        result = subprocess.run(["python3", "-m", "pytest", "test_pytest.py", "-v"])
+        exit(result.returncode)
+
+    if args.test == "full":
+        print("Running full pipeline test")
+        result = subprocess.run(["python3", "-m", "pytest", "test_pytest.py", "-v", "-k", "full"])    
+        exit(result.returncode)
     
+    
+    #the three required arguments for the pipeline were changed from required to allow testing to work and moved to main to check requirement later.
+    if args.sra is None:
+        print("SRA is required")
+        exit(1)
+    if args.mode is None:
+        print("Mode needs to be specified")
+        exit(1)
+    if args.mask is None:
+        print("Mask is required") 
+        exit(1)    
     #added this when testing the code with test_pytest.py, as the window cannot be negative.
     if args.window < 0:
         print("Window cannot be negative")
-        exit(1)
-
+        exit(1)    
     SRA_download(args)
     Quality_control(args)
     Trimming(args)
