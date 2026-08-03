@@ -424,18 +424,18 @@ def Bed_file_making(args):
         return f"{gene}_{gene_counter[gene]}"
     df['Gene'] = df['Gene'].apply(get_unique_id)
 
-    #for feature counts to work on the stranded data you need to label the strands however retain the true strand information for divergent analysis
+    
     
     df_plus = df.copy()
     df_plus['Strand'] = '+'
-    #map the true strand information onto the copies, before running feature counts to track the direction
+   
     
 
     df_minus = df.copy()
     df_minus['Strand'] = '-'
-    #same here
+  
     
-    #once the true strand label has been added to the suffix, you can drop the column
+   
     df_strands = pd.concat([df_plus, df_minus])
 
     df_strands.to_csv(flank_bed, sep='\t', header=False, index=False)
